@@ -7,7 +7,6 @@ interface BaseModalProps {
     title: string;
     titleIcon?: string;
     headerGradient?: string;
-    // FIX: Add optional maxWidth prop to allow custom modal width.
     maxWidth?: string;
 }
 
