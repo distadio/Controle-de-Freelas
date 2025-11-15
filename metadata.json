@@ -1,0 +1,5 @@
+{
+  "name": "Controle de Freelas",
+  "description": "An application to manage freelance jobs, track payments, and visualize financial metrics with a calendar-based interface. It includes features for data backup, dashboard analytics with AI insights, and monthly reporting.",
+  "requestFramePermissions": []
+}
