@@ -1,0 +1,43 @@
+# .github/workflows/deploy.yml
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - main # ou a branch que você usa para produção, ex: master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚚 Get latest code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Use a versão do Node.js compatível com seu projeto
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm install
+
+      - name: 🔨 Build project
+        run: npm run build
+        env:
+          # Se você precisar de variáveis de ambiente no build, adicione-as como secrets no GitHub
+          # Ex: API_KEY: ${{ secrets.VITE_API_KEY }}
+          CI: false # Adicionado para evitar que warnings sejam tratados como erros
+
+      - name: 🚀 Deploy to FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./dist/ # O diretório de build do Vite
+          server-dir: ./public_html/app/ # O diretório de destino na Hostinger para o subdomínio app
+          # ATIVADO: Limpa o diretório de destino antes de enviar os novos arquivos.
+          # CUIDADO: Isso deletará todos os arquivos em public_html/app que não estão no seu build.
+          clean: true
