@@ -234,11 +234,18 @@ const BackupModal: React.FC<BackupModalProps> = ({
                         </div>
                     ) : (
                         <div className="text-center">
-                            <p className="mb-4 text-gray-700">Faça login com sua conta Google para salvar e restaurar seus freelas na nuvem.</p>
+                            <p className="mb-4 text-gray-700">Faça login com sua conta Google para salvar seus freelas na nuvem e sincronizar com a Agenda.</p>
                             <button onClick={onLoginClick} className="bg-red-500 text-white font-semibold py-2 px-6 rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2 mx-auto">
                                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM5.12 6.162a5.98 5.98 0 018.76 0l-1.32 1.32a3.987 3.987 0 00-6.12 0L5.12 6.162zM10 12a2 2 0 110-4 2 2 0 010 4zm0 2a4 4 0 100-8 4 4 0 000 8zm-3.838.878a5.982 5.982 0 018.76 0l-1.32-1.32a3.987 3.987 0 00-6.12 0l-1.32 1.32z"/></svg>
                                 Conectar com Google
                             </button>
+                             <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 p-4 text-left text-sm rounded-r-lg" role="alert">
+                                <p className="font-bold">Aviso Importante</p>
+                                <p className="mt-1">
+                                    Para usar os recursos na nuvem, o Google pode exigir a ativação de suas APIs, o que pode envolver a configuração de um faturamento e a adição de um cartão de crédito.
+                                    Este é um procedimento padrão do Google para verificação e prevenção de abusos, mesmo que o uso se mantenha na faixa gratuita. O app não tem controle sobre este processo.
+                                </p>
+                            </div>
                         </div>
                     )}
                 </div>

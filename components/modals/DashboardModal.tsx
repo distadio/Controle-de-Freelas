@@ -66,6 +66,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         }, 0);
         
         // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
+        // FIX: Add explicit type to accumulator to fix type errors
         const contratantesCount = yearFreelas.reduce((acc, f) => {
             if (f.contratante) {
                 acc[f.contratante] = (acc[f.contratante] || 0) + 1;
@@ -94,6 +95,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
 
         const processGroupData = (key: 'categoria' | 'tipo_servico') => {
             // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
+            // FIX: Add explicit type to accumulator to fix type errors
             const grouped = yearFreelas.reduce((acc, f) => {
                 const groupKey = f[key] || 'outro';
                 if (!acc[groupKey]) {
@@ -107,6 +109,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         
         const processRankedData = (key: 'local' | 'contratante') => {
             // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
+            // FIX: Add explicit type to accumulator to fix type errors
              const grouped = yearFreelas.reduce((acc, f) => {
                 const groupKey = f[key];
                 if (groupKey) {
