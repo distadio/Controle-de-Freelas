@@ -26,6 +26,7 @@ jobs:
         run: npm run build
         env:
           CI: false
+          API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
       - name: 🚀 Deploy to FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
@@ -35,4 +36,4 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
           server-dir: ./public_html/app/
-          clean: true
+          dangerous-clean-late: true
