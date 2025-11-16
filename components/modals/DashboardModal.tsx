@@ -51,10 +51,10 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
 
         const mesesComReceita = receitaPorMes.filter(m => m.count > 0);
         const melhorMes = mesesComReceita.length > 0
-            ? mesesComReceita.reduce((max, m) => (m.total > max.total ? m : max))
+            ? mesesComReceita.reduce((max, m) => (m.total > max.total ? m : max), mesesComReceita[0])
             : { name: '-', total: 0, count: 0 };
         const piorMes = mesesComReceita.length > 0
-            ? mesesComReceita.reduce((min, m) => (m.total < min.total ? m : min))
+            ? mesesComReceita.reduce((min, m) => (m.total < min.total ? m : min), mesesComReceita[0])
             : { name: '-', total: 0, count: 0 };
 
         const freelasPagos = yearFreelas.filter(f => f.status === 'pago' && f.data_pagamento);
@@ -65,8 +65,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
             return sum + Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         }, 0);
         
-        // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
-        // FIX: Add explicit type to accumulator to fix type errors
+        // FIX: Explicitly type the initial value for the reduce function to ensure correct type inference for the accumulator.
         const contratantesCount = yearFreelas.reduce((acc, f) => {
             if (f.contratante) {
                 acc[f.contratante] = (acc[f.contratante] || 0) + 1;
@@ -93,9 +92,8 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
             recorrencia: totalContratantes > 0 ? (contratantesRecorrentes / totalContratantes) * 100 : 0
         };
 
+        // FIX: Explicitly type the initial value for the reduce function to ensure correct type inference for the accumulator.
         const processGroupData = (key: 'categoria' | 'tipo_servico') => {
-            // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
-            // FIX: Add explicit type to accumulator to fix type errors
             const grouped = yearFreelas.reduce((acc, f) => {
                 const groupKey = f[key] || 'outro';
                 if (!acc[groupKey]) {
@@ -107,9 +105,8 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
             return Object.values(grouped).sort((a, b) => b.count - a.count);
         }
         
+        // FIX: Explicitly type the initial value for the reduce function to ensure correct type inference for the accumulator.
         const processRankedData = (key: 'local' | 'contratante') => {
-            // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
-            // FIX: Add explicit type to accumulator to fix type errors
              const grouped = yearFreelas.reduce((acc, f) => {
                 const groupKey = f[key];
                 if (groupKey) {

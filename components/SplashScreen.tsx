@@ -23,7 +23,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onStart }) => {
                 Controle de Freelas
             </h1>
             <p className="text-lg text-white/95 mb-16 text-center font-medium drop-shadow-xl leading-relaxed max-w-sm">
-                Organize seus trabalhos, Acompanhe Pagamentos<br/>e nunca perca o prazo!
+                Sua vida de freelancer, agora 100% automatizada<br/>e organizada na nuvem!
             </p>
             <div className="text-base text-white text-center font-semibold animate-pulse-slow drop-shadow-lg mt-10">
                 Toque em qualquer lugar para começar
