@@ -65,13 +65,13 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
             return sum + Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         }, 0);
         
-        // FIX: Explicitly type the accumulator in reduce to fix type inference for Object.values.
-        const contratantesCount = yearFreelas.reduce<Record<string, number>>((acc, f) => {
+        // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
+        const contratantesCount = yearFreelas.reduce((acc, f) => {
             if (f.contratante) {
                 acc[f.contratante] = (acc[f.contratante] || 0) + 1;
             }
             return acc;
-        }, {});
+        }, {} as Record<string, number>);
         const totalContratantes = Object.keys(contratantesCount).length;
         const contratantesRecorrentes = Object.values(contratantesCount).filter(c => c > 1).length;
 
@@ -93,21 +93,21 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         };
 
         const processGroupData = (key: 'categoria' | 'tipo_servico') => {
-            // FIX: Explicitly type the accumulator in reduce to fix type inference for Object.values.
-            const grouped = yearFreelas.reduce<Record<string, { name: string, count: number }>>((acc, f) => {
+            // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
+            const grouped = yearFreelas.reduce((acc, f) => {
                 const groupKey = f[key] || 'outro';
                 if (!acc[groupKey]) {
                     acc[groupKey] = { name: groupKey.replace(/_/g, ' '), count: 0 };
                 }
                 acc[groupKey].count += 1;
                 return acc;
-            }, {});
+            }, {} as Record<string, { name: string, count: number }>);
             return Object.values(grouped).sort((a, b) => b.count - a.count);
         }
         
         const processRankedData = (key: 'local' | 'contratante') => {
-            // FIX: Explicitly type the accumulator in reduce to fix type inference for Object.values.
-             const grouped = yearFreelas.reduce<Record<string, { name: string, count: number, value: number }>>((acc, f) => {
+            // FIX: Use type assertion on the initial value for `reduce` to ensure correct type inference.
+             const grouped = yearFreelas.reduce((acc, f) => {
                 const groupKey = f[key];
                 if (groupKey) {
                     if (!acc[groupKey]) {
@@ -117,7 +117,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                     acc[groupKey].value += f.valor;
                 }
                 return acc;
-            }, {});
+            }, {} as Record<string, { name: string, count: number, value: number }>);
             return Object.values(grouped).sort((a, b) => b.count - a.count).slice(0, 5);
         }
 
