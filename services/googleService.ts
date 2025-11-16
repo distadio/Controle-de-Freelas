@@ -1,3 +1,4 @@
+
 import { Freela, CloudBackupInfo, GoogleUser } from '../types';
 
 declare global {
@@ -49,6 +50,11 @@ export const initGoogleClient = (callback: (tokenResponse: any) => void) => {
             await new Promise<void>((resolve) => {
                 window.gapi.load('client', () => resolve());
             });
+
+            if (!API_KEY) {
+                console.error("Google API Key not provided. Google services will be unavailable.");
+                return;
+            }
 
             await window.gapi.client.init({
                 apiKey: API_KEY,
