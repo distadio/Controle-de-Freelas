@@ -1,4 +1,4 @@
-
+// Main application component.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Freela, Categoria, TipoServico } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
