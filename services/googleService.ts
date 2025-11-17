@@ -10,7 +10,7 @@ declare global {
 const CLIENT_ID = '165800758744-iagdlnets04qum5939s8bnpomqk1v4hm.apps.googleusercontent.com';
 // FIX: Changed from import.meta.env to process.env to resolve TypeScript error 'Property 'env' does not exist on type 'ImportMeta''.
 // This assumes the API key is available in the execution environment as per project guidelines.
-const API_KEY = process.env.API_KEY;
+const API_KEY = process.env.API_KEY!;
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar';
 const DISCOVERY_DOCS = [
     "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
@@ -51,11 +51,6 @@ export const initGoogleClient = (callback: (tokenResponse: any) => void) => {
             await new Promise<void>((resolve) => {
                 window.gapi.load('client', () => resolve());
             });
-
-            if (!API_KEY) {
-                console.error("Google API Key not provided. Google services will be unavailable.");
-                return;
-            }
 
             await window.gapi.client.init({
                 apiKey: API_KEY,

@@ -1,4 +1,4 @@
-# Como Atualizar o App no GitHub (Processo Correto)
+# Como Atualizar o App no GitHub (Processo Simplificado)
 
 Este guia mostra o método correto e definitivo para enviar as últimas alterações do seu código para o GitHub. Este processo aciona o deploy automático para o seu site (`app.pulodogatoead.com.br`).
 
@@ -39,38 +39,29 @@ Agora, vamos obter uma cópia do projeto que inclui as informações do Git.
 
 ---
 
-### **Passo 4: Enviar as Alterações para o GitHub**
+### **Passo 4: Enviar as Alterações para o GitHub (O Novo Jeito Fácil)**
 
-Este é o processo que você usará sempre que quiser atualizar o site.
+Para facilitar o processo, criei um script que faz todo o trabalho pesado para você.
 
-1.  No Terminal, **entre na nova pasta do projeto**:
+#### **A. Configuração Única (só precisa fazer uma vez):**
+Primeiro, precisamos dar permissão para o script ser executado.
+1.  Abra o Terminal e navegue até a pasta do projeto:
     ```bash
     cd Controle-de-Freelas
     ```
-2.  Execute os seguintes comandos, um por vez, pressionando `Enter` após cada um.
-
-    **A. Verifique as alterações (opcional, mas recomendado):**
+2.  Execute o seguinte comando para tornar o script executável:
     ```bash
-    git status
-    ```
-    *Isso deve mostrar uma lista de arquivos. Se você vir seus arquivos listados com `modified` ou `untracked`, é um ótimo sinal! Prossiga para o próximo passo.*
-
-    **B. Adicione todos os arquivos para o "pacote" de envio:**
-    ```bash
-    git add .
+    chmod +x deploy.sh
     ```
 
-    **C. Crie um "ponto de salvamento" com uma mensagem:**
-    *Substitua `"Sua mensagem aqui"` por uma breve descrição do que você fez.*
+#### **B. Processo de Atualização (faça sempre que quiser atualizar o site):**
+Agora, para enviar suas atualizações, basta executar um único comando.
+1.  No Terminal, dentro da pasta `Controle-de-Freelas`, execute:
     ```bash
-    git commit -m "Sua mensagem aqui"
+    ./deploy.sh
     ```
-    *Exemplo: `git commit -m "Adiciona funcionalidade de busca"`*
-
-    **D. Envie para o GitHub (isso inicia o deploy):**
-    ```bash
-    git push origin main
-    ```
+2.  O script vai pedir que você **descreva suas alterações**. Digite uma mensagem curta (ex: "ajusta cores do layout") e pressione `Enter`.
+3.  Pronto! O script fará todo o resto e iniciará o deploy automático.
 
 ---
 
@@ -79,22 +70,22 @@ Este é o processo que você usará sempre que quiser atualizar o site.
 Use esta seção para agilizar o processo no dia a dia.
 
 #### **Configuração Inicial (só precisa fazer uma vez):**
-Clone o repositório para o seu computador.
+Clone o repositório e dê permissão ao script.
 ```bash
+# 1. Clone o projeto para o seu computador
 git clone https://github.com/distadio/Controle-de-Freelas.git
+
+# 2. Entre na pasta do projeto
+cd Controle-de-Freelas
+
+# 3. Dê permissão de execução para o script de deploy
+chmod +x deploy.sh
 ```
 
-#### **Processo de Atualização (faça sempre que quiser atualizar o site):**
-Execute estes comandos dentro da pasta do projeto.
+#### **Processo de Atualização (use sempre este comando):**
+Execute este comando de dentro da pasta do projeto para enviar suas atualizações.
 ```bash
-# 1. Adicione todas as suas alterações
-git add .
-
-# 2. Crie um "ponto de salvamento" (Lembre-se de trocar a mensagem!)
-git commit -m "Atualizando o app com novas funcionalidades"
-
-# 3. Envie para o GitHub para fazer o deploy
-git push origin main
+./deploy.sh
 ```
 
 ---
@@ -108,9 +99,15 @@ git push origin main
         rm -rf Controle-de-Freelas
         ```
         *Isso apaga a pasta permanentemente. Tenha certeza que você fez backup das suas alterações antes.*
+*   **Erro: `./deploy.sh: Permission denied`**
+    *   **Causa:** O script não tem permissão para ser executado.
+    *   **Solução:** Execute o comando de permissão novamente:
+        ```bash
+        chmod +x deploy.sh
+        ```
 
 ---
 
 ### **Verificação Final**
 
-Após o comando `git push`, vá para a aba **"Actions"** no seu repositório do GitHub para verificar o andamento do deploy. Se o processo iniciar (com um ícone amarelo 🟡) e depois ficar verde (✅), a atualização foi um sucesso!
+Após executar `./deploy.sh`, vá para a aba **"Actions"** no seu repositório do GitHub para verificar o andamento do deploy. Se o processo iniciar (com um ícone amarelo 🟡) e depois ficar verde (✅), a atualização foi um sucesso!

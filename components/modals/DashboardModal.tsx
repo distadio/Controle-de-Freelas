@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Freela, Categoria, TipoServico } from '../../types';
+import { Freela } from '../../types';
 import BaseModal from './BaseModal';
 import { generateDashboardInsights } from '../../services/geminiService';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -31,7 +31,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
 
-    const { years, yearFreelas, kpis, monthlyData, categoryData, serviceTypeData, topLocais, topContratantes, availableContratantes } = useMemo(() => {
+    const { years, yearFreelas, kpis, monthlyData, availableContratantes } = useMemo(() => {
         const years = [...new Set(allFreelas.map(f => new Date(f.data_evento + 'T00:00:00').getFullYear()).filter(year => !isNaN(year)))].sort((a: number, b: number) => b - a);
         if (years.length === 0) years.push(new Date().getFullYear());
 
@@ -48,200 +48,110 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         const freelasMei = yearFreelas.filter(f => f.declara_mei);
         const totalMei = freelasMei.reduce((sum, f) => sum + f.valor, 0);
 
-        const receitaPorMes = monthNames.map((name, index) => {
+        const monthlyData = monthNames.map((name, index) => {
             const monthFreelas = yearFreelas.filter(f => new Date(f.data_evento + 'T00:00:00').getMonth() === index);
             return {
                 name,
-                total: monthFreelas.reduce((sum, f) => sum + f.valor, 0),
-                count: monthFreelas.length
+                Receita: monthFreelas.reduce((sum, f) => sum + f.valor, 0),
             };
         });
 
-        const mesesComReceita = receitaPorMes.filter(m => m.count > 0);
-        const melhorMes = mesesComReceita.length > 0
-            ? mesesComReceita.reduce((max, m) => (m.total > max.total ? m : max))
-            : { name: '-', total: 0, count: 0 };
-        const piorMes = mesesComReceita.length > 0
-            ? mesesComReceita.reduce((min, m) => (m.total < min.total ? m : min))
-            : { name: '-', total: 0, count: 0 };
-
-        const freelasPagos = yearFreelas.filter(f => f.status === 'pago' && f.data_pagamento);
-        const tempoPagamento = freelasPagos.reduce((sum, f) => {
-            const evento = new Date(f.data_evento + 'T00:00:00');
-            const pagamento = new Date(f.data_pagamento! + 'T00:00:00');
-            const diffTime = Math.abs(pagamento.getTime() - evento.getTime());
-            return sum + Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        }, 0);
-        
-        // @FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator. This resolves an issue where the accumulator was inferred as `unknown`.
-        const contratantesCount = yearFreelas.reduce((acc, f) => {
-            if (f.contratante) {
-                acc[f.contratante] = (acc[f.contratante] || 0) + 1;
-            }
-            return acc;
-        }, {} as Record<string, number>);
-        const totalContratantes = Object.keys(contratantesCount).length;
-        const contratantesRecorrentes = Object.values(contratantesCount).filter(c => c > 1).length;
-
         const kpis = {
-            totalAnual,
+            totalAnual: formatCurrency(totalAnual),
+            totalMei: formatCurrency(totalMei),
+            ticketMedio: yearFreelas.length > 0 ? formatCurrency(totalAnual / yearFreelas.length) : formatCurrency(0),
             totalFreelas: yearFreelas.length,
-            totalMei,
-            totalMeiFreelas: freelasMei.length,
-            melhorMes: melhorMes.name,
-            melhorMesValor: melhorMes.total,
-            piorMes: piorMes.name,
-            piorMesValor: piorMes.total,
-            ticketMedioMensal: mesesComReceita.length > 0 ? totalAnual / mesesComReceita.length : 0,
-            frequenciaMensal: yearFreelas.length / 12,
-            ticketMedioUnitario: yearFreelas.length > 0 ? totalAnual / yearFreelas.length : 0,
-            taxaConversao: yearFreelas.length > 0 ? (freelasPagos.length / yearFreelas.length) * 100 : 0,
-            tempoMedioPagamento: freelasPagos.length > 0 ? Math.round(tempoPagamento / freelasPagos.length) : 0,
-            recorrencia: totalContratantes > 0 ? (contratantesRecorrentes / totalContratantes) * 100 : 0
         };
 
-        const processGroupData = (key: 'categoria' | 'tipo_servico') => {
-            // @FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator. This resolves an issue where properties were being accessed on an `unknown` type.
-            const grouped = yearFreelas.reduce((acc, f) => {
-                const groupKey = f[key] || 'outro';
-                if (!acc[groupKey]) {
-                    acc[groupKey] = { name: groupKey.replace(/_/g, ' '), count: 0 };
-                }
-                acc[groupKey].count += 1;
-                return acc;
-            }, {} as Record<string, { name: string, count: number }>);
-            return Object.values(grouped).sort((a, b) => b.count - a.count);
-        }
-        
-        const processRankedData = (key: 'local' | 'contratante') => {
-            // @FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator. This resolves an issue where properties were being accessed on an `unknown` type.
-             const grouped = yearFreelas.reduce((acc, f) => {
-                const groupKey = f[key];
-                if (groupKey) {
-                    if (!acc[groupKey]) {
-                        acc[groupKey] = { name: groupKey, count: 0, value: 0 };
-                    }
-                    acc[groupKey].count += 1;
-                    acc[groupKey].value += f.valor;
-                }
-                return acc;
-            }, {} as Record<string, { name: string, count: number, value: number }>);
-            return Object.values(grouped).sort((a, b) => b.count - a.count).slice(0, 5);
-        }
-
-        return { 
-            years, 
-            yearFreelas, 
-            kpis, 
-            monthlyData: receitaPorMes.map(m => ({name: m.name, Receita: m.total})), 
-            categoryData: processGroupData('categoria'), 
-            serviceTypeData: processGroupData('tipo_servico'),
-            topLocais: processRankedData('local'),
-            topContratantes: processRankedData('contratante'),
-            availableContratantes 
-        };
-
+        return { years, yearFreelas, kpis, monthlyData, availableContratantes };
     }, [allFreelas, selectedYear, filters]);
-    
+
+    const handleGenerateInsights = async () => {
+        setIsLoadingInsights(true);
+        setInsights('');
+        try {
+            const result = await generateDashboardInsights(yearFreelas);
+            setInsights(result);
+        } catch (error) {
+            console.error(error);
+            setInsights('Ocorreu um erro ao gerar os insights. Tente novamente.');
+        } finally {
+            setIsLoadingInsights(false);
+        }
+    };
+
     useEffect(() => {
         setInsights('');
     }, [selectedYear, filters]);
 
-    const handleGenerateInsights = async () => {
-        setIsLoadingInsights(true);
-        const result = await generateDashboardInsights(yearFreelas);
-        setInsights(result);
-        setIsLoadingInsights(false);
-    };
 
     return (
-        <BaseModal isOpen={isOpen} onClose={onClose} title="Dashboard de Métricas" titleIcon="📊" headerGradient="from-purple-600 via-pink-600 to-blue-600">
-            <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 bg-gray-50">
-                <div className="bg-white rounded-xl p-4 shadow-sm">
-                     <h3 className="text-lg font-bold text-gray-900 mb-3">Análise Anual</h3>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                         <div>
-                             <label htmlFor="yearSelector" className="block text-xs font-medium text-gray-700 mb-1">Ano</label>
-                             <select id="yearSelector" value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 text-gray-900 font-semibold text-sm">
-                                 {years.map(y => <option key={y} value={y}>{y}</option>)}
-                             </select>
-                         </div>
-                         <div>
-                             <label htmlFor="contratante" className="block text-xs font-medium text-gray-700 mb-1">Contratante</label>
-                             <select id="contratante" name="contratante" value={filters.contratante} onChange={handleFilterChange} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 text-gray-900 font-semibold text-sm">
-                                 <option value="">Todos</option>
-                                 {availableContratantes.map(c => <option key={c} value={c}>{c}</option>)}
-                             </select>
-                         </div>
-                         <div>
-                            <label htmlFor="tipoServico" className="block text-xs font-medium text-gray-700 mb-1">Tipo de Serviço</label>
-                            <select name="tipoServico" id="tipoServico" value={filters.tipoServico} onChange={handleFilterChange} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 text-gray-900 font-semibold text-sm capitalize">
-                                <option value="">Todos</option>
-                                {Object.values(TipoServico).map(v => <option key={v} value={v}>{v.replace(/_/g, ' ')}</option>)}
-                            </select>
-                         </div>
-                         <div>
-                            <label htmlFor="categoria" className="block text-xs font-medium text-gray-700 mb-1">Categoria</label>
-                            <select name="categoria" id="categoria" value={filters.categoria} onChange={handleFilterChange} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 text-gray-900 font-semibold text-sm capitalize">
-                                <option value="">Todos</option>
-                                {Object.values(Categoria).map(v => <option key={v} value={v}>{v.replace(/_/g, ' ')}</option>)}
-                            </select>
-                         </div>
-                     </div>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <KpiCard title="Receita Total" value={formatCurrency(kpis.totalAnual)} />
-                    <KpiCard title="Nº Freelas" value={kpis.totalFreelas} />
-                    <KpiCard title="Ticket Médio" value={formatCurrency(kpis.ticketMedioUnitario)} />
-                    <KpiCard title="Recorrência" value={`${kpis.recorrencia.toFixed(0)}%`} />
+        <BaseModal isOpen={isOpen} onClose={onClose} title="Dashboard Anual" titleIcon="📊" maxWidth="sm:max-w-3xl">
+            <div className="p-4 sm:p-6 bg-gray-50">
+                <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                    <div className="flex-1">
+                        <label htmlFor="year-select" className="text-sm font-medium text-gray-700">Ano</label>
+                        <select id="year-select" value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="w-full mt-1 p-2 border border-gray-300 rounded-lg">
+                            {years.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex-1">
+                        <label htmlFor="contratante-filter" className="text-sm font-medium text-gray-700">Contratante</label>
+                         <select id="contratante-filter" name="contratante" value={filters.contratante} onChange={handleFilterChange} className="w-full mt-1 p-2 border border-gray-300 rounded-lg">
+                            <option value="">Todos</option>
+                            {availableContratantes.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </div>
                 </div>
                 
-                <div className="bg-white rounded-xl p-4 shadow-sm">
-                    <h3 className="text-lg font-bold text-gray-900 mb-3">Receita por Mês</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <KpiCard title="Receita Total" value={kpis.totalAnual} />
+                    <KpiCard title="Total de Freelas" value={kpis.totalFreelas} />
+                    <KpiCard title="Ticket Médio" value={kpis.ticketMedio} />
+                    <KpiCard title="Total MEI" value={kpis.totalMei} />
+                </div>
+                
+                <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
+                    <h3 className="font-bold text-gray-800 mb-2">Receita Mensal</h3>
                     <ResponsiveContainer width="100%" height={250}>
-                        <BarChart data={monthlyData}>
-                            <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                            <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `R$${value/1000}k`} />
-                            <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ background: 'white', border: '1px solid #ccc', borderRadius: '8px' }}/>
-                            <Bar dataKey="Receita" fill="url(#colorUv)" radius={[4, 4, 0, 0]} />
-                             <defs>
-                                <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
-                                <stop offset="95%" stopColor="#8884d8" stopOpacity={0.2}/>
-                                </linearGradient>
-                            </defs>
+                        <BarChart data={monthlyData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                            <XAxis dataKey="name" stroke="#6b7280" fontSize={12} />
+                            <YAxis stroke="#6b7280" fontSize={12} tickFormatter={(value) => `R$${(value as number)/1000}k`} />
+                            <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                            <Bar dataKey="Receita" fill="#8884d8" radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
-                
-                <div className="bg-white rounded-xl p-4 shadow-sm">
-                    <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-3 gap-3">
-                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            <span className="text-2xl">✨</span> Insights com IA Gemini
-                        </h3>
-                        <button
-                            onClick={handleGenerateInsights}
-                            disabled={isLoadingInsights || yearFreelas.length < 3}
-                            className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-semibold py-2 px-4 rounded-lg hover:from-purple-600 hover:to-indigo-600 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm w-full sm:w-auto"
-                        >
-                            {isLoadingInsights ? 'Analisando...' : 'Gerar Análise'}
-                        </button>
-                    </div>
-                    {isLoadingInsights ? (
-                        <div className="text-center py-8">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
-                            <p className="mt-3 text-gray-600">Aguarde, a IA está processando seus dados...</p>
+
+                <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4 my-6">
+                    <h4 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+                        <span className="text-2xl">🤖</span>
+                        Análise com IA (Gemini)
+                    </h4>
+                    <p className="text-sm text-gray-700 mb-4">
+                        Receba insights e dicas personalizadas para otimizar sua carreira de freelancer com base nos dados deste ano.
+                    </p>
+                    <button 
+                        onClick={handleGenerateInsights} 
+                        disabled={isLoadingInsights || yearFreelas.length < 3}
+                        className="bg-indigo-600 text-white py-2 px-5 rounded-lg hover:bg-indigo-700 transition font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                    >
+                        {isLoadingInsights ? 'Analisando...' : 'Gerar Insights'}
+                    </button>
+                    {yearFreelas.length < 3 && <p className="text-xs text-indigo-700 mt-2">É necessário ter pelo menos 3 freelas registrados no ano para gerar insights.</p>}
+
+                    {isLoadingInsights && (
+                        <div className="mt-4 flex items-center justify-center p-8 bg-white rounded-lg border">
+                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                           <p className="ml-3 text-gray-600">Aguarde, a IA está pensando...</p>
                         </div>
-                    ) : insights ? (
-                        <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded-lg border border-gray-200" dangerouslySetInnerHTML={{ __html: insights.replace(/\n/g, '<br />').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-                    ) : (
-                        <div className="text-center text-gray-500 py-6 bg-gray-50 rounded-lg">
-                            <p className="font-semibold">{yearFreelas.length < 3 ? "Adicione pelo menos 3 freelas este ano para obter insights." : "Clique em 'Gerar Análise' para receber dicas da IA."}</p>
+                     )}
+                     {insights && (
+                        <div className="mt-4 p-4 bg-white rounded-lg border prose prose-sm max-w-none" style={{ whiteSpace: 'pre-wrap' }}>
+                            {insights}
                         </div>
                     )}
                 </div>
-
             </div>
         </BaseModal>
     );

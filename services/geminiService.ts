@@ -4,7 +4,7 @@ import { Freela } from "../types";
 // FIX: Corrected API key handling to align with coding guidelines.
 // The API key must be obtained from `process.env.API_KEY` and is assumed to be pre-configured.
 // This also resolves the TypeScript error 'Property 'env' does not exist on type 'ImportMeta''.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
 const formatDataForPrompt = (data: Freela[]): string => {
     const summary = data.map(f => ({
