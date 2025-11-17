@@ -73,7 +73,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
             return sum + Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         }, 0);
         
-        // FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator.
+        // @FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator. This resolves an issue where the accumulator was inferred as `unknown`.
         const contratantesCount = yearFreelas.reduce((acc, f) => {
             if (f.contratante) {
                 acc[f.contratante] = (acc[f.contratante] || 0) + 1;
@@ -101,7 +101,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         };
 
         const processGroupData = (key: 'categoria' | 'tipo_servico') => {
-            // FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator.
+            // @FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator. This resolves an issue where properties were being accessed on an `unknown` type.
             const grouped = yearFreelas.reduce((acc, f) => {
                 const groupKey = f[key] || 'outro';
                 if (!acc[groupKey]) {
@@ -114,7 +114,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         }
         
         const processRankedData = (key: 'local' | 'contratante') => {
-            // FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator.
+            // @FIX: Provide a typed initial value to the reduce function to ensure correct type inference for the accumulator. This resolves an issue where properties were being accessed on an `unknown` type.
              const grouped = yearFreelas.reduce((acc, f) => {
                 const groupKey = f[key];
                 if (groupKey) {

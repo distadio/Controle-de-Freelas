@@ -1,16 +1,10 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Freela } from "../types";
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  // In a real app, you might want to handle this more gracefully.
-  // For this context, we assume the key is provided.
-  console.warn("Gemini API key not found in environment variables.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
+// FIX: Corrected API key handling to align with coding guidelines.
+// The API key must be obtained from `process.env.API_KEY` and is assumed to be pre-configured.
+// This also resolves the TypeScript error 'Property 'env' does not exist on type 'ImportMeta''.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const formatDataForPrompt = (data: Freela[]): string => {
     const summary = data.map(f => ({
@@ -25,10 +19,7 @@ const formatDataForPrompt = (data: Freela[]): string => {
 };
 
 export const generateDashboardInsights = async (yearlyData: Freela[]): Promise<string> => {
-    if (!API_KEY) {
-        return "API Key not configured. Please set up your environment variable to use AI insights.";
-    }
-
+    // FIX: Removed the explicit API key check as per guidelines, which state to assume the key is available.
     if (yearlyData.length < 3) {
         return "Adicione mais alguns freelas (pelo menos 3) este ano para que a IA possa gerar insights mais relevantes e precisos sobre seu negócio.";
     }
@@ -58,7 +49,9 @@ export const generateDashboardInsights = async (yearlyData: Freela[]): Promise<s
             contents: prompt,
         });
 
-        return response.text ?? "A IA não retornou uma resposta em texto.";
+        // FIX: Per coding guidelines, response.text directly provides the string output.
+        // The nullish coalescing operator is unnecessary as .text returns a string.
+        return response.text;
     } catch (error) {
         console.error("Error calling Gemini API:", error);
         return "Ocorreu um erro ao gerar os insights. Verifique sua conexão e a chave da API. Tente novamente mais tarde.";
