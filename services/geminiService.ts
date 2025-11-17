@@ -1,10 +1,15 @@
 import { GoogleGenAI } from "@google/genai";
 import { Freela } from "../types";
 
-// FIX: Corrected API key handling to align with coding guidelines.
-// The API key must be obtained from `process.env.API_KEY` and is assumed to be pre-configured.
-// This also resolves the TypeScript error 'Property 'env' does not exist on type 'ImportMeta''.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+// This check ensures API_KEY is a string, satisfying TypeScript's type checker.
+// In a production build, Vite replaces `process.env.API_KEY` with the actual key,
+// so this error will not be thrown.
+const API_KEY = process.env.API_KEY;
+if (!API_KEY) {
+    throw new Error("VITE_GOOGLE_API_KEY is not defined. Please check your .env file or build configuration.");
+}
+
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const formatDataForPrompt = (data: Freela[]): string => {
     const summary = data.map(f => ({
@@ -19,7 +24,6 @@ const formatDataForPrompt = (data: Freela[]): string => {
 };
 
 export const generateDashboardInsights = async (yearlyData: Freela[]): Promise<string> => {
-    // FIX: Removed the explicit API key check as per guidelines, which state to assume the key is available.
     if (yearlyData.length < 3) {
         return "Adicione mais alguns freelas (pelo menos 3) este ano para que a IA possa gerar insights mais relevantes e precisos sobre seu negócio.";
     }
@@ -48,9 +52,7 @@ export const generateDashboardInsights = async (yearlyData: Freela[]): Promise<s
             model: model,
             contents: prompt,
         });
-
-        // FIX: Per coding guidelines, response.text directly provides the string output.
-        // The nullish coalescing operator is unnecessary as .text returns a string.
+        
         return response.text;
     } catch (error) {
         console.error("Error calling Gemini API:", error);

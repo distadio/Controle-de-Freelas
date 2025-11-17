@@ -8,9 +8,15 @@ declare global {
 }
 
 const CLIENT_ID = '165800758744-iagdlnets04qum5939s8bnpomqk1v4hm.apps.googleusercontent.com';
-// FIX: Changed from import.meta.env to process.env to resolve TypeScript error 'Property 'env' does not exist on type 'ImportMeta''.
-// This assumes the API key is available in the execution environment as per project guidelines.
-const API_KEY = process.env.API_KEY!;
+
+// This check ensures API_KEY is a string, satisfying TypeScript's type checker.
+// In a production build, Vite replaces `process.env.API_KEY` with the actual key,
+// so this error will not be thrown.
+const API_KEY = process.env.API_KEY;
+if (!API_KEY) {
+    throw new Error("VITE_GOOGLE_API_KEY is not defined. Please check your .env file or build configuration.");
+}
+
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar';
 const DISCOVERY_DOCS = [
     "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
