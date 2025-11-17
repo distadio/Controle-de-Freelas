@@ -1,13 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { Freela } from "../types";
 
-// This check ensures API_KEY is a string, satisfying TypeScript's type checker.
-// In a production build, Vite replaces `process.env.API_KEY` with the actual key,
-// so this error will not be thrown.
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-    throw new Error("VITE_GOOGLE_API_KEY is not defined. Please check your .env file or build configuration.");
-}
+// A non-null assertion (!) is used here to inform TypeScript that `process.env.API_KEY`
+// will be defined at runtime. This is guaranteed by the Vite build configuration,
+// which replaces this variable with the secret from GitHub Actions. This resolves the `tsc` build error.
+const API_KEY = process.env.API_KEY!;
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
