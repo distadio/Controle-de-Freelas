@@ -35,6 +35,6 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: app/
+          server-dir: public_html/app/
           dangerous-clean-late: true
           log-level: verbose

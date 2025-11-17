@@ -71,7 +71,6 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                 acc[f.contratante] = (acc[f.contratante] || 0) + 1;
             }
             return acc;
-        // FIX: Explicitly type the initial value for the reduce accumulator to ensure contratantesCount is correctly typed.
         }, {} as Record<string, number>);
         const totalContratantes = Object.keys(contratantesCount).length;
         const contratantesRecorrentes = Object.values(contratantesCount).filter(c => c > 1).length;
@@ -102,7 +101,6 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                 }
                 acc[groupKey].count += 1;
                 return acc;
-            // FIX: Explicitly type the initial value for the reduce accumulator to ensure grouped is correctly typed.
             }, {} as Record<string, { name: string, count: number }>);
             return Object.values(grouped).sort((a, b) => b.count - a.count);
         }
@@ -119,7 +117,6 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                     acc[groupKey].value += f.valor;
                 }
                 return acc;
-            // FIX: Explicitly type the initial value for the reduce accumulator to ensure grouped is correctly typed.
             }, {} as Record<string, { name: string, count: number, value: number }>);
             return Object.values(grouped).sort((a, b) => b.count - a.count).slice(0, 5);
         }
