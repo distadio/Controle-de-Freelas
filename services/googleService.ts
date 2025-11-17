@@ -9,10 +9,16 @@ declare global {
 
 const CLIENT_ID = '165800758744-iagdlnets04qum5939s8bnpomqk1v4hm.apps.googleusercontent.com';
 
-// A non-null assertion (!) is used here to inform TypeScript that `process.env.API_KEY`
-// will be defined at runtime. This is guaranteed by the Vite build configuration,
-// which replaces this variable with the secret from GitHub Actions. This resolves the `tsc` build error.
-const API_KEY = process.env.API_KEY!;
+// This function ensures the API key is available at runtime and satisfies TypeScript.
+function getCheckedApiKey(): string {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        // This will stop execution and show a clear error in the browser console
+        // if the API key is not available.
+        throw new Error("VITE_GOOGLE_API_KEY is not defined. Please check your environment variables or GitHub Secrets.");
+    }
+    return apiKey;
+}
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar';
 const DISCOVERY_DOCS = [
@@ -56,7 +62,7 @@ export const initGoogleClient = (callback: (tokenResponse: any) => void) => {
             });
 
             await window.gapi.client.init({
-                apiKey: API_KEY,
+                apiKey: getCheckedApiKey(),
                 discoveryDocs: DISCOVERY_DOCS,
             });
             gapiInited = true;
