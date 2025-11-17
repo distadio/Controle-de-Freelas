@@ -56,7 +56,8 @@ export const generateDashboardInsights = async (yearlyData: Freela[]): Promise<s
             contents: prompt,
         });
         
-        return response.text;
+        // FIX: Ensure a string is always returned, even if the API response text is undefined.
+        return response.text ?? "A IA não retornou uma resposta de texto válida.";
     } catch (error) {
         console.error("Error calling Gemini API:", error);
         return "Ocorreu um erro ao gerar os insights. Verifique sua conexão e a chave da API. Tente novamente mais tarde.";
