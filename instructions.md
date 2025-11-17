@@ -74,6 +74,31 @@ Este é o processo que você usará sempre que quiser atualizar o site.
 
 ---
 
+### **🚀 Resumo Rápido dos Comandos (Para Copiar e Colar)**
+
+Use esta seção para agilizar o processo no dia a dia.
+
+#### **Configuração Inicial (só precisa fazer uma vez):**
+Clone o repositório para o seu computador.
+```bash
+git clone https://github.com/distadio/Controle-de-Freelas.git
+```
+
+#### **Processo de Atualização (faça sempre que quiser atualizar o site):**
+Execute estes comandos dentro da pasta do projeto.
+```bash
+# 1. Adicione todas as suas alterações
+git add .
+
+# 2. Crie um "ponto de salvamento" (Lembre-se de trocar a mensagem!)
+git commit -m "Atualizando o app com novas funcionalidades"
+
+# 3. Envie para o GitHub para fazer o deploy
+git push origin main
+```
+
+---
+
 ### **Solucionando Problemas Comuns**
 
 *   **Erro: `fatal: destination path 'Controle-de-Freelas' already exists...`**
