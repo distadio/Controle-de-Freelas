@@ -38,3 +38,4 @@ jobs:
           server-dir: public_html/freela/
           dangerous-clean-late: true
           log-level: verbose
+          
