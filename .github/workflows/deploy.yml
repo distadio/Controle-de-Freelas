@@ -35,6 +35,6 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: app.pulodogatoead.com.br/public_html/freela/
+          server-dir: freela/
           dangerous-clean-late: true
           log-level: verbose
