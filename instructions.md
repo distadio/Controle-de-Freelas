@@ -39,6 +39,21 @@ Agora, vamos obter uma cópia do projeto que inclui as informações do Git.
 
 ---
 
+### **Passo 3.5: Testar Localmente (Opcional, mas Recomendado)**
+
+Antes de enviar suas alterações, é uma ótima prática testá-las no seu próprio computador. Isso evita o ciclo de "tentativa e acerto" durante o deploy.
+
+Para instruções detalhadas de como instalar e rodar o projeto localmente, **consulte o novo arquivo `README.md`** que está na pasta principal do projeto.
+
+Em resumo, o processo local envolve:
+1.  Criar um arquivo `.env` para sua chave de API pessoal.
+2.  Rodar `npm install` (apenas na primeira vez).
+3.  Rodar `npm run dev` para iniciar o aplicativo.
+
+Depois de verificar que tudo funciona bem localmente, você pode seguir para o próximo passo e enviar suas atualizações.
+
+---
+
 ### **Passo 4: Enviar as Alterações para o GitHub (O Novo Jeito Fácil)**
 
 Para facilitar o processo, criei um script que faz todo o trabalho pesado para você.
