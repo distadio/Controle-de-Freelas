@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react()],
-    base: './',
+    base: '/app/',
     // Define variáveis globais que serão substituídas no código durante o build.
     // Isso resolve o problema de `process.env` não estar disponível no navegador.
     define: {
