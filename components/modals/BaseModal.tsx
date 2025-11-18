@@ -8,15 +8,25 @@ interface BaseModalProps {
     titleIcon?: string;
     headerGradient?: string;
     maxWidth?: string;
+    applyPhoneAspectRatio?: boolean;
 }
 
-const BaseModal: React.FC<BaseModalProps> = ({ isOpen, onClose, children, title, titleIcon, headerGradient = 'from-blue-600 to-purple-600', maxWidth = 'sm:max-w-[450px]' }) => {
+const BaseModal: React.FC<BaseModalProps> = ({ 
+    isOpen, 
+    onClose, 
+    children, 
+    title, 
+    titleIcon, 
+    headerGradient = 'from-blue-600 to-purple-600', 
+    maxWidth = 'sm:max-w-[450px]',
+    applyPhoneAspectRatio = true
+}) => {
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 transition-opacity duration-300" onClick={onClose}>
             <div 
-                className={`modal-content bg-white rounded-2xl w-full shadow-2xl flex flex-col max-h-[90vh] transition-transform duration-300 transform scale-95 animate-modal-in sm:aspect-[9/16] ${maxWidth}`}
+                className={`modal-content bg-white rounded-2xl w-full shadow-2xl flex flex-col max-h-[90vh] transition-transform duration-300 transform scale-95 animate-modal-in ${applyPhoneAspectRatio ? 'sm:aspect-[9/16]' : ''} ${maxWidth}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <header className={`bg-gradient-to-r ${headerGradient} text-white p-4 flex items-center justify-between rounded-t-2xl flex-shrink-0`}>

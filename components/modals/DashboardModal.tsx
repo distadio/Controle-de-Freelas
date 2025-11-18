@@ -20,6 +20,16 @@ const KpiCard: React.FC<{ title: string; value: string | number }> = ({ title, v
     </div>
 );
 
+const DetailStatCard: React.FC<{ icon: string; title: string; children: React.ReactNode; }> = ({ icon, title, children }) => (
+    <div className="bg-white rounded-lg p-4 shadow-sm h-full">
+        <div className="flex items-center mb-2">
+            <span className="text-xl mr-2">{icon}</span>
+            <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">{title}</h4>
+        </div>
+        {children}
+    </div>
+);
+
 
 const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFreelas }) => {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -31,7 +41,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
 
-    const { years, yearFreelas, kpis, monthlyData, availableContratantes } = useMemo(() => {
+    const { years, yearFreelas, kpis, monthlyData, availableContratantes, bestMonth, worstMonth, topClients } = useMemo(() => {
         const years = [...new Set(allFreelas.map(f => new Date(f.data_evento + 'T00:00:00').getFullYear()).filter(year => !isNaN(year)))].sort((a: number, b: number) => b - a);
         if (years.length === 0) years.push(new Date().getFullYear());
 
@@ -55,6 +65,28 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                 Receita: monthFreelas.reduce((sum, f) => sum + f.valor, 0),
             };
         });
+        
+        const monthsWithRevenue = monthlyData.filter(m => m.Receita > 0);
+        let bestMonth: { name: string; Receita: number } | null = null;
+        let worstMonth: { name: string; Receita: number } | null = null;
+        
+        if (monthsWithRevenue.length > 0) {
+            bestMonth = monthsWithRevenue.reduce((max, month) => month.Receita > max.Receita ? month : max, monthsWithRevenue[0]);
+            worstMonth = monthsWithRevenue.reduce((min, month) => month.Receita < min.Receita ? month : min, monthsWithRevenue[0]);
+        }
+
+        const clientRevenue: { [key: string]: number } = {};
+        yearFreelas.forEach(freela => {
+            if (freela.contratante) {
+                clientRevenue[freela.contratante] = (clientRevenue[freela.contratante] || 0) + freela.valor;
+            }
+        });
+
+        const topClients = Object.entries(clientRevenue)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 3)
+            .map(([name, total]) => ({ name, total }));
+
 
         const kpis = {
             totalAnual: formatCurrency(totalAnual),
@@ -63,7 +95,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
             totalFreelas: yearFreelas.length,
         };
 
-        return { years, yearFreelas, kpis, monthlyData, availableContratantes };
+        return { years, yearFreelas, kpis, monthlyData, availableContratantes, bestMonth, worstMonth, topClients };
     }, [allFreelas, selectedYear, filters]);
 
     const handleGenerateInsights = async () => {
@@ -86,7 +118,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
 
 
     return (
-        <BaseModal isOpen={isOpen} onClose={onClose} title="Dashboard Anual" titleIcon="📊" maxWidth="sm:max-w-3xl">
+        <BaseModal isOpen={isOpen} onClose={onClose} title="Dashboard Anual" titleIcon="📊" maxWidth="sm:max-w-3xl" applyPhoneAspectRatio={false}>
             <div className="p-4 sm:p-6 bg-gray-50">
                 <div className="flex flex-col sm:flex-row gap-4 mb-4">
                     <div className="flex-1">
@@ -104,11 +136,50 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                     </div>
                 </div>
                 
+                <h3 className="text-base font-bold text-gray-800 mb-2 mt-4">Resumo Geral</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                     <KpiCard title="Receita Total" value={kpis.totalAnual} />
                     <KpiCard title="Total de Freelas" value={kpis.totalFreelas} />
                     <KpiCard title="Ticket Médio" value={kpis.ticketMedio} />
                     <KpiCard title="Total MEI" value={kpis.totalMei} />
+                </div>
+                
+                <h3 className="text-base font-bold text-gray-800 mb-2 mt-6">Análise Detalhada</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <DetailStatCard icon="🏆" title="Melhor Mês">
+                        {bestMonth ? (
+                            <div>
+                                <p className="text-2xl font-bold text-gray-900">{bestMonth.name}</p>
+                                <p className="text-lg text-green-600 font-semibold">{formatCurrency(bestMonth.Receita)}</p>
+                            </div>
+                        ) : (
+                            <p className="text-gray-500 text-sm mt-2">Nenhuma receita registrada.</p>
+                        )}
+                    </DetailStatCard>
+                    <DetailStatCard icon="📉" title="Pior Mês">
+                        {worstMonth ? (
+                            <div>
+                                <p className="text-2xl font-bold text-gray-900">{worstMonth.name}</p>
+                                <p className="text-lg text-red-600 font-semibold">{formatCurrency(worstMonth.Receita)}</p>
+                            </div>
+                        ) : (
+                             <p className="text-gray-500 text-sm mt-2">Nenhuma receita registrada.</p>
+                        )}
+                    </DetailStatCard>
+                    <DetailStatCard icon="👥" title="Top Contratantes">
+                        {topClients.length > 0 ? (
+                            <ul className="space-y-2 mt-1">
+                                {topClients.map((client, index) => (
+                                    <li key={index} className="flex justify-between items-center text-sm">
+                                        <span className="font-semibold text-gray-800 truncate pr-2">{client.name}</span>
+                                        <span className="text-gray-600 font-medium whitespace-nowrap">{formatCurrency(client.total)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-gray-500 text-sm mt-2">Nenhum contratante registrado.</p>
+                        )}
+                    </DetailStatCard>
                 </div>
                 
                 <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
@@ -147,8 +218,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                         </div>
                      )}
                      {insights && (
-                        <div className="mt-4 p-4 bg-white rounded-lg border prose prose-sm max-w-none" style={{ whiteSpace: 'pre-wrap' }}>
-                            {insights}
+                        <div className="mt-4 p-4 bg-white rounded-lg border prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: insights.replace(/\n/g, '<br />') }}>
                         </div>
                     )}
                 </div>

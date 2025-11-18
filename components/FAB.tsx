@@ -46,7 +46,8 @@ const FAB: React.FC<FABProps> = ({ onMenuClick }) => {
                      {menuItems.map((item, index) => (
                          <div
                              key={item.id}
-                             onClick={() => {
+                             onClick={(e) => {
+                                 e.stopPropagation(); // <-- A CORREÇÃO DEFINITIVA
                                  onMenuClick(item.id as any);
                                  setIsOpen(false);
                              }}

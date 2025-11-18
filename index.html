@@ -66,17 +66,18 @@
           box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
+    "recharts": "https://aistudiocdn.com/recharts@^3.4.1",
     "@capacitor/cli": "https://aistudiocdn.com/@capacitor/cli@^7.4.4",
     "vite": "https://aistudiocdn.com/vite@^7.2.2",
-    "recharts": "https://aistudiocdn.com/recharts@^3.4.1",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^18.2.0/",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "react/": "https://aistudiocdn.com/react@^18.2.0/",
-    "react": "https://aistudiocdn.com/react@^18.2.0"
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
 </script>
@@ -84,6 +85,7 @@
 </head>
   <body>
     <div id="root"></div>
+    <div id="modal-root"></div>
     <script type="module" src="./index.tsx"></script>
   <script type="module" src="/index.tsx"></script>
 </body>

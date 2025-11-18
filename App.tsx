@@ -1,5 +1,6 @@
 // Main application component.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { Freela, Categoria, TipoServico } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useAuth } from './contexts/AuthContext';
@@ -18,6 +19,8 @@ import ReportModal from './components/modals/ReportModal';
 import MeiPopup from './components/modals/MeiPopup';
 import Toast from './components/Toast';
 import ConflictModal from './components/modals/ConflictModal';
+
+const modalRoot = document.getElementById('modal-root');
 
 const App: React.FC = () => {
     const [showSplash, setShowSplash] = useState(true);
@@ -244,6 +247,87 @@ const App: React.FC = () => {
         return <SplashScreen onStart={() => setShowSplash(false)} />;
     }
 
+    const modals = (
+      <>
+        {activeModal === 'freelaForm' && (
+            <FreelaFormModal 
+                isOpen={true}
+                onClose={() => setActiveModal(null)}
+                onSave={handleSaveFreela}
+                onConflict={handleConflict}
+                allFreelas={freelas}
+                freelaToEdit={selectedFreela}
+                selectedDate={selectedDate}
+            />
+        )}
+
+        {activeModal === 'freelaDetails' && selectedFreela && (
+            <FreelaDetailsModal
+                isOpen={true}
+                onClose={() => setActiveModal(null)}
+                freela={selectedFreela}
+                onEdit={(freela) => {
+                    setSelectedFreela(freela);
+                    setActiveModal('freelaForm');
+                }}
+                onDelete={handleDeleteFreela}
+                onTogglePayment={handleTogglePayment}
+            />
+        )}
+        
+        {activeModal === 'backup' && (
+            <BackupModal 
+                isOpen={true}
+                onClose={() => setActiveModal(null)}
+                freelas={freelas}
+                setFreelas={setFreelas}
+                showToast={showToast}
+                isLoggedIn={isLoggedIn}
+                user={user}
+                onLoginClick={signIn}
+                isAutoBackupEnabled={isCloudAutoBackupEnabled}
+                onToggleAutoBackup={setCloudAutoBackupEnabled}
+            />
+        )}
+        
+        {activeModal === 'dashboard' && (
+            <DashboardModal
+                isOpen={true}
+                onClose={() => setActiveModal(null)}
+                allFreelas={freelas}
+            />
+        )}
+        
+        {activeModal === 'report' && (
+             <ReportModal
+                isOpen={true}
+                onClose={() => setActiveModal(null)}
+                freelas={freelas}
+                currentDate={currentDate}
+             />
+        )}
+        
+        {conflictState && (
+            <ConflictModal
+                isOpen={true}
+                onClose={() => setConflictState(null)}
+                onConfirm={handleConfirmConflict}
+                conflictingFreela={conflictState.conflicting}
+            />
+        )}
+
+        {(meiStatus === 'warning' || meiStatus === 'danger') && (
+            <MeiPopup 
+                status={meiStatus} 
+                meiInfo={meiInfo} 
+                onClose={() => setMeiStatus('ok')} 
+            />
+        )}
+
+        {toast && <Toast message={toast.message} type={toast.type} />}
+      </>
+    );
+
     return (
         <div className="font-sans p-0 sm:p-4 h-screen w-screen flex items-center justify-center">
             <div id="app" className="max-w-md mx-auto bg-white relative rounded-none sm:rounded-2xl shadow-2xl sm:border-4 sm:border-white/30 backdrop-blur-sm overflow-hidden h-full w-full sm:h-auto sm:aspect-[9/16] sm:max-h-[95vh] flex flex-col pt-[env(safe-area-inset-top)]">
@@ -290,82 +374,7 @@ const App: React.FC = () => {
                 />
                 <FAB onMenuClick={(action) => setActiveModal(action)} />
                 
-                {activeModal === 'freelaForm' && (
-                    <FreelaFormModal 
-                        isOpen={true}
-                        onClose={() => setActiveModal(null)}
-                        onSave={handleSaveFreela}
-                        onConflict={handleConflict}
-                        allFreelas={freelas}
-                        freelaToEdit={selectedFreela}
-                        selectedDate={selectedDate}
-                    />
-                )}
-
-                {activeModal === 'freelaDetails' && selectedFreela && (
-                    <FreelaDetailsModal
-                        isOpen={true}
-                        onClose={() => setActiveModal(null)}
-                        freela={selectedFreela}
-                        onEdit={(freela) => {
-                            setSelectedFreela(freela);
-                            setActiveModal('freelaForm');
-                        }}
-                        onDelete={handleDeleteFreela}
-                        onTogglePayment={handleTogglePayment}
-                    />
-                )}
-                
-                {activeModal === 'backup' && (
-                    <BackupModal 
-                        isOpen={true}
-                        onClose={() => setActiveModal(null)}
-                        freelas={freelas}
-                        setFreelas={setFreelas}
-                        showToast={showToast}
-                        isLoggedIn={isLoggedIn}
-                        user={user}
-                        onLoginClick={signIn}
-                        isAutoBackupEnabled={isCloudAutoBackupEnabled}
-                        onToggleAutoBackup={setCloudAutoBackupEnabled}
-                    />
-                )}
-                
-                {activeModal === 'dashboard' && (
-                    <DashboardModal
-                        isOpen={true}
-                        onClose={() => setActiveModal(null)}
-                        allFreelas={freelas}
-                    />
-                )}
-                
-                {activeModal === 'report' && (
-                     <ReportModal
-                        isOpen={true}
-                        onClose={() => setActiveModal(null)}
-                        freelas={freelas}
-                        currentDate={currentDate}
-                     />
-                )}
-                
-                {conflictState && (
-                    <ConflictModal
-                        isOpen={true}
-                        onClose={() => setConflictState(null)}
-                        onConfirm={handleConfirmConflict}
-                        conflictingFreela={conflictState.conflicting}
-                    />
-                )}
-
-                {(meiStatus === 'warning' || meiStatus === 'danger') && (
-                    <MeiPopup 
-                        status={meiStatus} 
-                        meiInfo={meiInfo} 
-                        onClose={() => setMeiStatus('ok')} 
-                    />
-                )}
-
-                {toast && <Toast message={toast.message} type={toast.type} />}
+                {modalRoot && ReactDOM.createPortal(modals, modalRoot)}
             </div>
         </div>
     );
