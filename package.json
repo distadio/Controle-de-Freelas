@@ -2,6 +2,7 @@
   "name": "controle-de-freelas",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "An application to manage freelance jobs.",
   "scripts": {
     "dev": "vite",
