@@ -9,12 +9,9 @@ declare global {
 
 const CLIENT_ID = '165800758744-iagdlnets04qum5939s8bnpomqk1v4hm.apps.googleusercontent.com';
 
-// This function ensures the API key is available at runtime and satisfies TypeScript.
 function getCheckedApiKey(): string {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-        // This will stop execution and show a clear error in the browser console
-        // if the API key is not available.
         throw new Error("VITE_GOOGLE_API_KEY is not defined. Please check your environment variables or GitHub Secrets.");
     }
     return apiKey;
@@ -34,63 +31,77 @@ let tokenClient: any;
 let gapiInited = false;
 let gisInited = false;
 
-const loadScript = (src: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = src;
-        script.async = true;
-        script.defer = true;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
-        document.head.appendChild(script);
+// Aguardar o carregamento completo dos scripts
+const waitForGoogleLibs = (): Promise<void> => {
+    return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+            if (window.gapi && window.google && window.google.accounts) {
+                clearInterval(checkInterval);
+                resolve();
+            }
+        }, 100);
+        
+        // Timeout de 10 segundos
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            if (!window.gapi || !window.google) {
+                console.error("Google libraries failed to load after 10 seconds");
+            }
+        }, 10000);
     });
 };
 
+export const initGoogleClient = async (callback: (tokenResponse: any) => void) => {
+    try {
+        // Aguardar os scripts carregarem
+        await waitForGoogleLibs();
+        
+        console.log("Google libraries loaded successfully");
 
-export const initGoogleClient = (callback: (tokenResponse: any) => void) => {
-    const init = async () => {
-        try {
-            // Carrega os scripts do Google em paralelo
-            await Promise.all([
-                loadScript('https://apis.google.com/js/api.js'),
-                loadScript('https://accounts.google.com/gsi/client')
-            ]);
+        // Inicializar GAPI
+        await new Promise<void>((resolve) => {
+            window.gapi.load('client', () => resolve());
+        });
 
-            // Após carregar, inicializa o GAPI
-            await new Promise<void>((resolve) => {
-                window.gapi.load('client', () => resolve());
-            });
+        await window.gapi.client.init({
+            apiKey: getCheckedApiKey(),
+            discoveryDocs: DISCOVERY_DOCS,
+        });
+        gapiInited = true;
+        console.log("GAPI initialized");
 
-            await window.gapi.client.init({
-                apiKey: getCheckedApiKey(),
-                discoveryDocs: DISCOVERY_DOCS,
-            });
-            gapiInited = true;
+        // Inicializar GIS
+        tokenClient = window.google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: callback,
+        });
+        gisInited = true;
+        console.log("GIS initialized");
 
-            // Inicializa o GIS
-            tokenClient = window.google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: callback,
-            });
-            gisInited = true;
-
-        } catch (error) {
-            console.error("Error initializing Google Client:", error);
-        }
-    };
-    init();
+    } catch (error) {
+        console.error("Error initializing Google Client:", error);
+    }
 };
 
 export const signIn = () => {
+    console.log("signIn called, gisInited:", gisInited);
+    
     if (!gisInited) {
         console.error("Google Identity Services not initialized.");
+        alert("Google Identity Services ainda não foi inicializado. Aguarde alguns segundos e tente novamente.");
         return;
     }
-    if (window.gapi.client.getToken() === null) {
-        tokenClient.requestAccessToken({ prompt: 'consent' });
-    } else {
-        tokenClient.requestAccessToken({ prompt: '' });
+    
+    try {
+        if (window.gapi.client.getToken() === null) {
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        } else {
+            tokenClient.requestAccessToken({ prompt: '' });
+        }
+    } catch (error) {
+        console.error("Error during sign in:", error);
+        alert("Erro ao tentar fazer login. Verifique o console para mais detalhes.");
     }
 };
 
@@ -157,7 +168,6 @@ export const uploadBackup = async (freelas: Freela[]) => {
     });
 };
 
-
 export const downloadBackup = async (): Promise<Freela[] | null> => {
     const fileId = await getFileId();
     if (!fileId) return null;
@@ -168,7 +178,6 @@ export const downloadBackup = async (): Promise<Freela[] | null> => {
             alt: 'media',
         });
 
-        // The body is a string, parse it to get the object
         const backupObject = JSON.parse(response.body);
         if (backupObject && backupObject.data) {
             return backupObject.data as Freela[];
