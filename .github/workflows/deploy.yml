@@ -1,4 +1,3 @@
-# .github/workflows/deploy.yml
 name: Deploy to Hostinger
 
 on:
@@ -7,36 +6,24 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: 🚚 Get latest code
-        uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v3
 
-      - name: ⚙️ Setup Node.js
-        uses: actions/setup-node@v4
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v3
         with:
           node-version: '18'
+          cache: 'npm'
 
       - name: 📦 Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: 🔨 Build project
+      - name: 🏗️ Build project
         run: npm run build
-        env:
-          CI: false
-          VITE_GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-
-      - name: 📄 Create .htaccess for SPA routing
-        run: |
-          echo "<IfModule mod_rewrite.c>" > dist/.htaccess
-          echo "  RewriteEngine On" >> dist/.htaccess
-          echo "  RewriteBase /app/" >> dist/.htaccess
-          echo "  RewriteCond %{REQUEST_FILENAME} !-f" >> dist/.htaccess
-          echo "  RewriteCond %{REQUEST_FILENAME} !-d" >> dist/.htaccess
-          echo "  RewriteRule . /app/index.html [L]" >> dist/.htaccess
-          echo "</IfModule>" >> dist/.htaccess
 
       - name: 🚀 Deploy to FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
@@ -45,6 +32,6 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: app/
-          dangerous-clean-late: true
+          server-dir: /home/u950592664/domains/pulodogatoead.com.br/public_html/app/
+          dangerous-clean-slate: true
           log-level: verbose
