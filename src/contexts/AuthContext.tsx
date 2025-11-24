@@ -20,26 +20,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [isLoading, setIsLoading] = useState(true);
 
     const handleAuthChange = useCallback(async (tokenResponse: any) => {
+        console.log("📱 handleAuthChange called with:", tokenResponse);
         setIsLoading(true);
+        
         if (tokenResponse && tokenResponse.access_token) {
             gapi.client.setToken(tokenResponse);
             try {
                 const response = await gapi.client.request({
-                    path: 'https://www.googleapis.com/oauth2/v3/userinfo'
+                    path: 'https://www.googleapis.com/oauth2/v2/userinfo'
                 });
                 const profile = response.result;
+                console.log("✅ User profile loaded:", profile);
+                
                 setUser({
-                    email: profile.email,
-                    name: profile.name,
-                    picture: profile.picture
+                    email: profile.email || '',
+                    name: profile.name || profile.email || 'Usuário',
+                    picture: profile.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name || profile.email)}&background=6366f1&color=fff`
                 });
                 setIsLoggedIn(true);
             } catch (error) {
-                console.error("Error fetching user info:", error);
+                console.error("❌ Error fetching user info:", error);
                 setIsLoggedIn(false);
                 setUser(null);
             }
         } else {
+            console.log("⚠️ No valid token response");
             setIsLoggedIn(false);
             setUser(null);
         }
@@ -47,25 +52,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, []);
 
     useEffect(() => {
-        const checkGapiReady = setInterval(() => {
-            if (window.gapi && window.google) {
-                clearInterval(checkGapiReady);
+        console.log("🚀 AuthProvider: Starting Google API initialization");
+        let attempts = 0;
+        const maxAttempts = 100;
+        
+        const checkGoogleReady = setInterval(() => {
+            attempts++;
+            
+            if (window.gapi && window.google && window.google.accounts && window.google.accounts.oauth2) {
+                console.log("✅ Google APIs found! Initializing...");
+                clearInterval(checkGoogleReady);
                 initGoogleClient(handleAuthChange);
-                // No automatic sign-in, let user click the button.
                 setIsLoading(false);
+            } else if (attempts >= maxAttempts) {
+                console.error("❌ Failed to load Google APIs after 10 seconds");
+                clearInterval(checkGoogleReady);
+                setIsLoading(false);
+                alert("Erro ao carregar Google APIs. Recarregue a página.");
             }
         }, 100);
 
-        return () => clearInterval(checkGapiReady);
+        return () => clearInterval(checkGoogleReady);
     }, [handleAuthChange]);
 
-
     const handleSignIn = () => {
+        console.log("🔐 handleSignIn called");
         setIsLoading(true);
         googleSignIn();
     };
 
     const handleSignOut = () => {
+        console.log("👋 handleSignOut called");
         googleSignOut();
         setIsLoggedIn(false);
         setUser(null);
