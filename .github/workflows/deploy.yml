@@ -8,39 +8,31 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v3
 
-      - name: 🔧 Setup Node.js
-        uses: actions/setup-node@v3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: 🏗️ Build project
+      - name: Build
         run: npm run build
 
-      - name: 🚀 Deploy to FTP
+      - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./dist/
-          server-dir: ./public_html/
+          protocol: ftp
+          port: 21
+          local-dir: dist
+          server-dir: public_html
           dangerous-clean-slate: true
-          log-level: verbose
-
-      - name: 📝 Add politica-privacidade.html to root
-        run: |
-          echo "Adicionando política de privacidade na raiz..."
-          # O arquivo já vem do public/ via Vite e vai para dist/
-          # Não é necessário mover manualmente
-
-      - name: ✅ Notify success
-        run: echo '✅ Deploy concluído com sucesso! Política disponível em: https://pulodogatoead.com.br/politica-privacidade.html'
