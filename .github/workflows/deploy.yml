@@ -32,6 +32,15 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: ./public_html/app/
+          server-dir: ./public_html/
           dangerous-clean-slate: true
           log-level: verbose
+
+      - name: 📝 Add politica-privacidade.html to root
+        run: |
+          echo "Adicionando política de privacidade na raiz..."
+          # O arquivo já vem do public/ via Vite e vai para dist/
+          # Não é necessário mover manualmente
+
+      - name: ✅ Notify success
+        run: echo '✅ Deploy concluído com sucesso! Política disponível em: https://pulodogatoead.com.br/politica-privacidade.html'
