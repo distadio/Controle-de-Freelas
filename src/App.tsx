@@ -19,6 +19,7 @@ import ReportModal from './components/modals/ReportModal';
 import MeiPopup from './components/modals/MeiPopup';
 import Toast from './components/Toast';
 import ConflictModal from './components/modals/ConflictModal';
+import PrivacyPolicyModal from './components/modals/PrivacyPolicyModal';
 
 const modalRoot = document.getElementById('modal-root');
 
@@ -26,6 +27,8 @@ const App: React.FC = () => {
     const [showSplash, setShowSplash] = useState(true);
     const [freelas, setFreelas] = useLocalStorage<Freela[]>('controle_freelas_data_v2', []);
     const [isCloudAutoBackupEnabled, setCloudAutoBackupEnabled] = useLocalStorage('controle_freelas_auto_cloud_backup', false);
+    const [privacyPolicyAccepted, setPrivacyPolicyAccepted] = useLocalStorage('controle_freelas_privacy_policy_accepted', false);
+    const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [activeModal, setActiveModal] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -243,6 +246,17 @@ const App: React.FC = () => {
         }
     }, [activeModal, handleSyncGoogleCalendar]);
 
+    useEffect(() => {
+        if (!showSplash && !privacyPolicyAccepted) {
+            setShowPrivacyPolicy(true);
+        }
+    }, [showSplash, privacyPolicyAccepted]);
+
+    const handleAcceptPrivacyPolicy = () => {
+        setPrivacyPolicyAccepted(true);
+        setShowPrivacyPolicy(false);
+    };
+
     if (showSplash) {
         return <SplashScreen onStart={() => setShowSplash(false)} />;
     }
@@ -325,6 +339,11 @@ const App: React.FC = () => {
         )}
 
         {toast && <Toast message={toast.message} type={toast.type} />}
+
+        <PrivacyPolicyModal
+            isOpen={showPrivacyPolicy}
+            onAccept={handleAcceptPrivacyPolicy}
+        />
       </>
     );
 
