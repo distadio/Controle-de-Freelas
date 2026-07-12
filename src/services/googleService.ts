@@ -292,8 +292,15 @@ export const syncFreelaToCalendar = async (calendarId: string, freela: Freela): 
                 d.setHours(d.getHours() + 1);
                 endTime = d.toTimeString().split(' ')[0].substring(0, 5);
             }
+            let endDateStr = freela.data_evento;
+            if (endTime <= startTime) {
+                const nextDay = new Date(freela.data_evento + 'T00:00:00');
+                nextDay.setDate(nextDay.getDate() + 1);
+                endDateStr = nextDay.toISOString().split('T')[0];
+            }
+
             start = { 'dateTime': `${freela.data_evento}T${startTime}:00`, 'timeZone': 'America/Sao_Paulo' };
-            end = { 'dateTime': `${freela.data_evento}T${endTime}:00`, 'timeZone': 'America/Sao_Paulo' };
+            end = { 'dateTime': `${endDateStr}T${endTime}:00`, 'timeZone': 'America/Sao_Paulo' };
         }
         
         const eventResource = {
