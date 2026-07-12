@@ -21,6 +21,7 @@ import Toast from './components/Toast';
 import ConflictModal from './components/modals/ConflictModal';
 import PrivacyPolicyModal from './components/modals/PrivacyPolicyModal';
 import AboutModal from './components/modals/AboutModal';
+import DayFreelasModal from './components/modals/DayFreelasModal';
 
 const modalRoot = document.getElementById('modal-root');
 
@@ -323,6 +324,24 @@ const App: React.FC = () => {
             />
         )}
 
+        {activeModal === 'dayFreelas' && selectedDate && (
+            <DayFreelasModal
+                isOpen={true}
+                onClose={() => setActiveModal(null)}
+                date={selectedDate}
+                freelas={freelas.filter(f => f.data_evento === selectedDate)}
+                allFreelas={freelas}
+                onNewFreela={() => {
+                    setSelectedFreela(null);
+                    setActiveModal('freelaForm');
+                }}
+                onFreelaClick={(freela) => {
+                    setSelectedFreela(freela);
+                    setActiveModal('freelaDetails');
+                }}
+            />
+        )}
+
         {activeModal === 'freelaDetails' && selectedFreela && (
             <FreelaDetailsModal
                 isOpen={true}
@@ -426,13 +445,14 @@ const App: React.FC = () => {
                 />
                 <main className="flex-1 overflow-y-auto pb-32">
                     <div className="p-4 bg-white">
-                        <Calendar 
+                        <Calendar
                             currentDate={currentDate}
                             freelas={freelas}
                             onDayClick={(date) => {
                                 setSelectedDate(date);
                                 setSelectedFreela(null);
-                                setActiveModal('freelaForm');
+                                const hasFreelas = freelas.some(f => f.data_evento === date);
+                                setActiveModal(hasFreelas ? 'dayFreelas' : 'freelaForm');
                             }}
                         />
                     </div>
