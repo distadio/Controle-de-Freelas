@@ -195,14 +195,14 @@ export const uploadBackup = async (freelas: Freela[]) => {
     }
 };
 
-export const downloadBackup = async (): Promise<Freela[] | null> => {
+export const getCloudBackup = async (): Promise<{ data: Freela[]; timestamp: string } | null> => {
     try {
         const fileId = await getFileId();
         if (!fileId) {
             console.log("ℹ️ No backup file found");
             return null;
         }
-        
+
         const response = await window.gapi.client.drive.files.get({
             fileId: fileId,
             alt: 'media',
@@ -211,13 +211,18 @@ export const downloadBackup = async (): Promise<Freela[] | null> => {
         const backupObject = JSON.parse(response.body);
         if (backupObject && backupObject.data) {
             console.log("✅ Backup downloaded successfully");
-            return backupObject.data as Freela[];
+            return { data: backupObject.data as Freela[], timestamp: backupObject.timestamp };
         }
         return null;
     } catch (error) {
         console.error("❌ Error downloading backup:", error);
         return null;
     }
+};
+
+export const downloadBackup = async (): Promise<Freela[] | null> => {
+    const backup = await getCloudBackup();
+    return backup ? backup.data : null;
 };
 
 export const getBackupMetadata = async (): Promise<CloudBackupInfo | null> => {

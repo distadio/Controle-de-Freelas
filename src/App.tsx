@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom';
 import { Freela, Categoria, TipoServico } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useAuth } from './contexts/AuthContext';
-import { uploadBackup, findOrCreateCalendar, syncFreelaToCalendar, deleteCalendarEvent } from './services/googleService';
+import { uploadBackup, getCloudBackup, findOrCreateCalendar, syncFreelaToCalendar, deleteCalendarEvent } from './services/googleService';
 import SplashScreen from './components/SplashScreen';
 import Header from './components/Header';
 import Calendar from './components/Calendar';
@@ -42,6 +42,7 @@ const App: React.FC = () => {
     const { user, isLoggedIn, signIn, signOut } = useAuth();
     const [isSyncing, setIsSyncing] = useState(false);
     const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hasReconciledCloudRef = useRef(false);
 
     const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
@@ -98,6 +99,52 @@ const App: React.FC = () => {
             }
         };
     }, [freelas, isLoggedIn, isCloudAutoBackupEnabled, showToast]);
+
+    // On connecting to Google, reconcile local data with whatever is in the cloud:
+    // whichever has more freelas (or, if tied, is more recently updated) wins, and
+    // the result is saved back to Drive so both sides stay in sync.
+    useEffect(() => {
+        if (!isLoggedIn) {
+            hasReconciledCloudRef.current = false;
+            return;
+        }
+        if (hasReconciledCloudRef.current) return;
+        hasReconciledCloudRef.current = true;
+
+        (async () => {
+            try {
+                const cloudBackup = await getCloudBackup();
+
+                if (!cloudBackup) {
+                    if (freelas.length > 0) {
+                        await uploadBackup(freelas);
+                        showToast('Backup inicial salvo no Google Drive.', 'success');
+                    }
+                    return;
+                }
+
+                const localLatest = freelas.reduce((max, f) => {
+                    const t = f.updated_at || f.created_at || '';
+                    return t > max ? t : max;
+                }, '');
+
+                const cloudIsWinner =
+                    cloudBackup.data.length > freelas.length ||
+                    (cloudBackup.data.length === freelas.length && cloudBackup.timestamp > localLatest);
+
+                if (cloudIsWinner) {
+                    setFreelas(cloudBackup.data);
+                    showToast('Dados mais recentes do Google Drive foram restaurados.', 'success');
+                } else if (freelas.length > 0) {
+                    await uploadBackup(freelas);
+                    showToast('Seus dados locais (mais recentes) foram salvos no Google Drive.', 'success');
+                }
+            } catch (error) {
+                console.error('Cloud reconciliation failed:', error);
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoggedIn]);
 
     const handleSaveFreela = (freela: Freela) => {
         const index = freelas.findIndex(f => f.id === freela.id);
