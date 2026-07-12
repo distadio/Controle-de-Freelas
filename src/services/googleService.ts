@@ -18,7 +18,7 @@ function getCheckedApiKey(): string {
     return apiKey;
 }
 
-const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.app.created https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email';
 const DISCOVERY_DOCS = [
     "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
     "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"
@@ -131,7 +131,7 @@ export const signOut = () => {
 const getFileId = async (): Promise<string | null> => {
     try {
         const response = await window.gapi.client.drive.files.list({
-            spaces: 'appDataFolder',
+            q: `name='${BACKUP_FILENAME}' and trashed=false`,
             fields: 'files(id, name)',
         });
         const file = response.result.files?.find((f: any) => f.name === BACKUP_FILENAME);
@@ -157,7 +157,6 @@ export const uploadBackup = async (freelas: Freela[]) => {
         const metadata = {
             name: BACKUP_FILENAME,
             mimeType: 'application/json',
-            ...(!fileId && { parents: ['appDataFolder'] })
         };
 
         const multipartRequestBody =

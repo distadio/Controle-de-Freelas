@@ -20,6 +20,7 @@ import MeiPopup from './components/modals/MeiPopup';
 import Toast from './components/Toast';
 import ConflictModal from './components/modals/ConflictModal';
 import PrivacyPolicyModal from './components/modals/PrivacyPolicyModal';
+import AboutModal from './components/modals/AboutModal';
 
 const modalRoot = document.getElementById('modal-root');
 
@@ -342,8 +343,24 @@ const App: React.FC = () => {
 
         <PrivacyPolicyModal
             isOpen={showPrivacyPolicy}
+            mode="gate"
             onAccept={handleAcceptPrivacyPolicy}
         />
+
+        {activeModal === 'about' && (
+            <AboutModal
+                isOpen={true}
+                onClose={() => setActiveModal(null)}
+            />
+        )}
+
+        {activeModal === 'policies' && (
+            <PrivacyPolicyModal
+                isOpen={true}
+                mode="viewer"
+                onClose={() => setActiveModal(null)}
+            />
+        )}
       </>
     );
 
