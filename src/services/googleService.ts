@@ -241,8 +241,14 @@ export const findOrCreateCalendar = async (): Promise<string | null> => {
     try {
         const storedCalendarId = localStorage.getItem(CALENDAR_ID_STORAGE_KEY);
         if (storedCalendarId) {
-            console.log("✅ Using stored calendar ID");
-            return storedCalendarId;
+            try {
+                await window.gapi.client.calendar.calendars.get({ calendarId: storedCalendarId });
+                console.log("✅ Using stored calendar ID");
+                return storedCalendarId;
+            } catch (error) {
+                console.warn("⚠️ Stored calendar ID is no longer accessible, recreating...", error);
+                localStorage.removeItem(CALENDAR_ID_STORAGE_KEY);
+            }
         }
 
         const response = await window.gapi.client.calendar.calendarList.list();
