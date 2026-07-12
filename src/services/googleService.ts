@@ -168,7 +168,7 @@ export const uploadBackup = async (freelas: Freela[]) => {
             fileContent +
             close_delim;
 
-        const request = window.gapi.client.request({
+        const response = await window.gapi.client.request({
             path: `/upload/drive/v3/files${fileId ? `/${fileId}` : ''}`,
             method: fileId ? 'PATCH' : 'POST',
             params: { uploadType: 'multipart' },
@@ -177,18 +177,9 @@ export const uploadBackup = async (freelas: Freela[]) => {
             },
             body: multipartRequestBody,
         });
-        
-        return new Promise((resolve, reject) => {
-            request.execute((file: any, err: any) => {
-                if (err) {
-                    console.error("❌ Upload error:", err);
-                    reject(err);
-                } else {
-                    console.log("✅ Backup uploaded successfully");
-                    resolve(file);
-                }
-            });
-        });
+
+        console.log("✅ Backup uploaded successfully");
+        return response.result;
     } catch (error) {
         console.error("❌ Error uploading backup:", error);
         throw error;
