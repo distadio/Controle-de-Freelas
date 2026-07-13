@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Freela, Categoria, TipoServico } from '../../types';
 import BaseModal from './BaseModal';
+import { normalizeName, nameKey } from '../../services/textService';
 
 interface ReportModalProps {
     isOpen: boolean;
@@ -131,15 +132,15 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
         });
         const categorias = Object.values(catMap).sort((a, b) => b.total - a.total);
 
-        const cliMap: Record<string, { total: number; count: number }> = {};
+        const cliMap = new Map<string, { name: string; total: number; count: number }>();
         filteredFreelas.forEach(f => {
-            const key = f.contratante?.trim() || 'Sem contratante';
-            if (!cliMap[key]) cliMap[key] = { total: 0, count: 0 };
-            cliMap[key].total += f.valor;
-            cliMap[key].count += 1;
+            const key = nameKey(f.contratante) || 'sem contratante';
+            const entry = cliMap.get(key) || { name: normalizeName(f.contratante) || 'Sem contratante', total: 0, count: 0 };
+            entry.total += f.valor;
+            entry.count += 1;
+            cliMap.set(key, entry);
         });
-        const contratantes = Object.entries(cliMap)
-            .map(([name, v]) => ({ name, ...v }))
+        const contratantes = [...cliMap.values()]
             .sort((a, b) => b.total - a.total)
             .slice(0, 5);
 

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Freela } from '../../types';
 import BaseModal from './BaseModal';
 import { generateDashboardInsights } from '../../services/geminiService';
+import { normalizeName, nameKey } from '../../services/textService';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface DashboardModalProps {
@@ -46,10 +47,18 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         if (years.length === 0) years.push(new Date().getFullYear());
 
         const yearFreelasForFilters = allFreelas.filter(f => new Date(f.data_evento + 'T00:00:00').getFullYear() === selectedYear);
-        const availableContratantes = [...new Set(yearFreelasForFilters.map(f => f.contratante).filter(Boolean))] as string[];
 
-        const yearFreelas = yearFreelasForFilters.filter(f => 
-            (!filters.contratante || f.contratante === filters.contratante) &&
+        // Deduplica contratantes tratando variações de espaços e maiúsculas
+        // ("Pulga", "Pulga " e " pulga") como o mesmo nome.
+        const contratanteMap = new Map<string, string>();
+        yearFreelasForFilters.forEach(f => {
+            const key = nameKey(f.contratante);
+            if (key && !contratanteMap.has(key)) contratanteMap.set(key, normalizeName(f.contratante));
+        });
+        const availableContratantes = [...contratanteMap.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+        const yearFreelas = yearFreelasForFilters.filter(f =>
+            (!filters.contratante || nameKey(f.contratante) === nameKey(filters.contratante)) &&
             (!filters.tipoServico || f.tipo_servico === filters.tipoServico) &&
             (!filters.categoria || f.categoria === filters.categoria)
         );
@@ -75,17 +84,18 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
             worstMonth = monthsWithRevenue.reduce((min, month) => month.Receita < min.Receita ? month : min, monthsWithRevenue[0]);
         }
 
-        const clientRevenue: { [key: string]: number } = {};
+        const clientRevenue = new Map<string, { name: string; total: number }>();
         yearFreelas.forEach(freela => {
-            if (freela.contratante) {
-                clientRevenue[freela.contratante] = (clientRevenue[freela.contratante] || 0) + freela.valor;
-            }
+            const key = nameKey(freela.contratante);
+            if (!key) return;
+            const entry = clientRevenue.get(key) || { name: normalizeName(freela.contratante), total: 0 };
+            entry.total += freela.valor;
+            clientRevenue.set(key, entry);
         });
 
-        const topClients = Object.entries(clientRevenue)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 3)
-            .map(([name, total]) => ({ name, total }));
+        const topClients = [...clientRevenue.values()]
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 3);
 
 
         const kpis = {

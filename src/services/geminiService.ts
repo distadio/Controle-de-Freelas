@@ -58,8 +58,15 @@ export const generateDashboardInsights = async (yearlyData: Freela[]): Promise<s
         
         // FIX: Ensure a string is always returned, even if the API response text is undefined.
         return response.text ?? "A IA não retornou uma resposta de texto válida.";
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error calling Gemini API:", error);
-        return "Ocorreu um erro ao gerar os insights. Verifique sua conexão e a chave da API. Tente novamente mais tarde.";
+        const msg = String(error?.message || error);
+        if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+            return "**A chave de API do Google não está habilitada para o Gemini.**\n\nPara ativar: acesse o Google Cloud Console do projeto, abra a biblioteca de APIs, ative a **Generative Language API** e tente novamente em alguns minutos.";
+        }
+        if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+            return "O limite gratuito de uso da IA foi atingido por agora. Tente novamente mais tarde.";
+        }
+        return "Ocorreu um erro ao gerar os insights. Verifique sua conexão e tente novamente mais tarde.";
     }
 };
