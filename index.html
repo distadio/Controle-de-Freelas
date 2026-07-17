@@ -10,7 +10,18 @@
     <title>Controle de Freelas</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Conteúdo estático de fallback: visível para rastreadores sem JS
+           (ex: verificador do Google) e substituído pelo app ao carregar. -->
+      <div style="font-family: sans-serif; text-align: center; padding: 40px 16px; color: #333;">
+        <h1>Controle de Freelas</h1>
+        <p>Sua vida de freelancer, organizada: agenda, pagamentos e MEI.</p>
+        <p>
+          <a href="/app/politica-privacidade.html">Política de Privacidade</a> •
+          <a href="/app/termos-servico.html">Termos de Serviço</a>
+        </p>
+      </div>
+    </div>
     <div id="modal-root"></div>
     
     <!-- Carregar Google APIs -->
