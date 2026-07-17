@@ -6,14 +6,17 @@ interface HeaderProps {
     currentDate: Date;
     onPrevMonth: () => void;
     onNextMonth: () => void;
+    onGoToday: () => void;
     onOpenReport: () => void;
+    theme: 'light' | 'dark';
+    onToggleTheme: () => void;
     user: GoogleUser | null;
     isLoggedIn: boolean;
     onLoginClick: () => void;
     onLogoutClick: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ currentDate, onPrevMonth, onNextMonth, onOpenReport, user, isLoggedIn, onLoginClick, onLogoutClick }) => {
+const Header: React.FC<HeaderProps> = ({ currentDate, onPrevMonth, onNextMonth, onGoToday, onOpenReport, theme, onToggleTheme, user, isLoggedIn, onLoginClick, onLogoutClick }) => {
     const [showLogout, setShowLogout] = useState(false);
     const monthName = currentDate.toLocaleString('pt-BR', { month: 'long' });
     const year = currentDate.getFullYear();
@@ -39,11 +42,23 @@ const Header: React.FC<HeaderProps> = ({ currentDate, onPrevMonth, onNextMonth, 
                 <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
             </button>
             <div className="flex-1 text-center">
-                 <h1 className="relative z-10 text-xl font-bold text-center">
+                 <h1
+                    className="relative z-10 text-xl font-bold text-center cursor-pointer select-none"
+                    onClick={onGoToday}
+                    title="Voltar para o mês atual"
+                >
                     {formattedMonth} {year}
                 </h1>
             </div>
              <div className="flex items-center gap-2 relative z-10">
+                <button
+                    onClick={onToggleTheme}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/50 text-lg leading-none"
+                    title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+                    aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+                >
+                    {theme === 'dark' ? '☀️' : '🌙'}
+                </button>
                 <button onClick={onOpenReport} className="p-2 hover:bg-white/20 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/50" title="Relatório do Mês">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v6.167a1.5 1.5 0 01-3 0V10.333a1.5 1.5 0 013 0zM10 3.5a1.5 1.5 0 013 0v13a1.5 1.5 0 01-3 0v-13zM14 8.5a1.5 1.5 0 013 0v8a1.5 1.5 0 01-3 0v-8z" />

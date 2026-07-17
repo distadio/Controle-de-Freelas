@@ -1,5 +1,5 @@
 // Main application component.
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import ReactDOM from 'react-dom';
 import { Freela, Categoria, TipoServico } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -14,16 +14,25 @@ import FAB from './components/FAB';
 import FreelaFormModal from './components/modals/FreelaFormModal';
 import FreelaDetailsModal from './components/modals/FreelaDetailsModal';
 import BackupModal from './components/modals/BackupModal';
-import DashboardModal from './components/modals/DashboardModal';
 import ReportModal from './components/modals/ReportModal';
 import MeiPopup from './components/modals/MeiPopup';
+import MeiConfigModal from './components/modals/MeiConfigModal';
 import Toast from './components/Toast';
 import ConflictModal from './components/modals/ConflictModal';
 import PrivacyPolicyModal from './components/modals/PrivacyPolicyModal';
 import AboutModal from './components/modals/AboutModal';
 import DayFreelasModal from './components/modals/DayFreelasModal';
 
+// Carregado sob demanda: o Dashboard puxa Recharts e a lib do Gemini,
+// que são pesadas — assim o app abre mais rápido no celular.
+const DashboardModal = React.lazy(() => import('./components/modals/DashboardModal'));
+
 const modalRoot = document.getElementById('modal-root');
+
+const todayString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 const App: React.FC = () => {
     const [showSplash, setShowSplash] = useState(true);
@@ -31,6 +40,9 @@ const App: React.FC = () => {
     const [isCloudAutoBackupEnabled, setCloudAutoBackupEnabled] = useLocalStorage('controle_freelas_auto_cloud_backup', false);
     const [privacyPolicyAccepted, setPrivacyPolicyAccepted] = useLocalStorage('controle_freelas_privacy_policy_accepted', false);
     const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+    const [theme, setTheme] = useLocalStorage<'light' | 'dark'>('controle_freelas_theme', 'light');
+    const [meiLimiteAnual, setMeiLimiteAnual] = useLocalStorage<number>('controle_freelas_mei_limite_anual', 81000);
+    const [bannerDismissedOn, setBannerDismissedOn] = useLocalStorage<string>('controle_freelas_banner_dismissed', '');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [activeModal, setActiveModal] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -44,6 +56,39 @@ const App: React.FC = () => {
     const [isSyncing, setIsSyncing] = useState(false);
     const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hasReconciledCloudRef = useRef(false);
+    const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+    useEffect(() => {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+    }, [theme]);
+
+    // Resumo do dia: freelas de hoje + pagamentos atrasados (banner dispensável 1x/dia)
+    const todayInfo = useMemo(() => {
+        const today = todayString();
+        const todayFreelas = freelas
+            .filter(f => f.data_evento === today)
+            .sort((a, b) => (a.horario_inicio || '').localeCompare(b.horario_inicio || ''));
+        const overdue = freelas.filter(f => f.status === 'atrasada');
+        const overdueTotal = overdue.reduce((s, f) => s + f.valor, 0);
+        return { today, todayFreelas, overdueCount: overdue.length, overdueTotal };
+    }, [freelas]);
+
+    const showTodayBanner = bannerDismissedOn !== todayInfo.today
+        && (todayInfo.todayFreelas.length > 0 || todayInfo.overdueCount > 0);
+
+    // Troca de mês por gesto de deslizar (swipe horizontal)
+    const handleTouchStart = (e: React.TouchEvent) => {
+        touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        if (!touchStartRef.current) return;
+        const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
+        const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
+        touchStartRef.current = null;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) {
+            setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + (dx < 0 ? 1 : -1), 1));
+        }
+    };
 
     const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
@@ -159,6 +204,34 @@ const App: React.FC = () => {
             showToast('Freela adicionado com sucesso!');
         }
         setActiveModal(null);
+    };
+
+    // Salva várias ocorrências de uma vez (recorrência semanal do formulário)
+    const handleSaveMany = (novos: Freela[]) => {
+        setFreelas([...freelas, ...novos]);
+        showToast(`${novos.length} freelas adicionados!`);
+        setActiveModal(null);
+    };
+
+    // Atualização pontual (ex: data de pagamento) sem fechar o modal de detalhes
+    const handleUpdateFreela = (updated: Freela) => {
+        setFreelas(freelas.map(f => (f.id === updated.id ? updated : f)));
+        setSelectedFreela(updated);
+        showToast('Freela atualizado!');
+    };
+
+    // Duplicar: abre o formulário pré-preenchido como um NOVO freela
+    const handleDuplicateFreela = (freela: Freela) => {
+        setSelectedFreela({
+            ...freela,
+            id: '',
+            status: 'pendente',
+            data_pagamento: null,
+            google_calendar_event_id: null,
+            conflictWith: undefined,
+        });
+        setSelectedDate(null);
+        setActiveModal('freelaForm');
     };
 
     const handleConflict = (conflicting: Freela, pending: Partial<Freela>) => {
@@ -313,10 +386,11 @@ const App: React.FC = () => {
     const modals = (
       <>
         {activeModal === 'freelaForm' && (
-            <FreelaFormModal 
+            <FreelaFormModal
                 isOpen={true}
                 onClose={() => setActiveModal(null)}
                 onSave={handleSaveFreela}
+                onSaveMany={handleSaveMany}
                 onConflict={handleConflict}
                 allFreelas={freelas}
                 freelaToEdit={selectedFreela}
@@ -353,6 +427,8 @@ const App: React.FC = () => {
                 }}
                 onDelete={handleDeleteFreela}
                 onTogglePayment={handleTogglePayment}
+                onDuplicate={handleDuplicateFreela}
+                onUpdate={handleUpdateFreela}
             />
         )}
         
@@ -372,10 +448,29 @@ const App: React.FC = () => {
         )}
         
         {activeModal === 'dashboard' && (
-            <DashboardModal
+            <Suspense fallback={
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+                </div>
+            }>
+                <DashboardModal
+                    isOpen={true}
+                    onClose={() => setActiveModal(null)}
+                    allFreelas={freelas}
+                />
+            </Suspense>
+        )}
+
+        {activeModal === 'meiConfig' && (
+            <MeiConfigModal
                 isOpen={true}
                 onClose={() => setActiveModal(null)}
-                allFreelas={freelas}
+                limiteAnual={meiLimiteAnual}
+                onSave={(novo) => {
+                    setMeiLimiteAnual(novo);
+                    showToast('Limite MEI atualizado!');
+                    setActiveModal(null);
+                }}
             />
         )}
         
@@ -433,17 +528,46 @@ const App: React.FC = () => {
     return (
         <div className="font-sans p-0 sm:p-4 h-screen w-screen flex items-center justify-center">
             <div id="app" className="max-w-md mx-auto bg-white relative rounded-none sm:rounded-2xl shadow-2xl sm:border-4 sm:border-white/30 backdrop-blur-sm overflow-hidden h-full w-full sm:h-auto sm:aspect-[9/16] sm:max-h-[95vh] flex flex-col pt-[env(safe-area-inset-top)]">
-                <Header 
+                <Header
                     currentDate={currentDate}
                     onPrevMonth={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}
                     onNextMonth={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}
+                    onGoToday={() => setCurrentDate(new Date())}
                     onOpenReport={() => setActiveModal('report')}
+                    theme={theme}
+                    onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                     user={user}
                     isLoggedIn={isLoggedIn}
                     onLoginClick={signIn}
                     onLogoutClick={signOut}
                 />
-                <main className="flex-1 overflow-y-auto pb-32">
+                <main className="flex-1 overflow-y-auto pb-32" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+                    {showTodayBanner && (
+                        <div className="mx-4 mt-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl shadow-lg p-3 flex items-start gap-3">
+                            <span className="text-2xl">📣</span>
+                            <div className="flex-1 min-w-0 text-sm">
+                                {todayInfo.todayFreelas.length > 0 && (
+                                    <p className="font-semibold truncate">
+                                        Hoje: {todayInfo.todayFreelas[0].descricao}
+                                        {todayInfo.todayFreelas[0].horario_inicio ? ` às ${todayInfo.todayFreelas[0].horario_inicio}` : ''}
+                                        {todayInfo.todayFreelas.length > 1 ? ` +${todayInfo.todayFreelas.length - 1}` : ''}
+                                    </p>
+                                )}
+                                {todayInfo.overdueCount > 0 && (
+                                    <p className="opacity-90">
+                                        ⚠️ {todayInfo.overdueCount} pagamento{todayInfo.overdueCount > 1 ? 's' : ''} atrasado{todayInfo.overdueCount > 1 ? 's' : ''}: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(todayInfo.overdueTotal)}
+                                    </p>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setBannerDismissedOn(todayInfo.today)}
+                                className="p-1 hover:bg-white/20 rounded-full flex-shrink-0"
+                                aria-label="Dispensar aviso"
+                            >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                            </button>
+                        </div>
+                    )}
                     <div className="p-4 bg-white">
                         <Calendar
                             currentDate={currentDate}
@@ -467,9 +591,11 @@ const App: React.FC = () => {
                         />
                     </div>
                 </main>
-                <Footer 
+                <Footer
                     currentDate={currentDate}
                     freelas={freelas}
+                    limiteAnual={meiLimiteAnual}
+                    onOpenMeiConfig={() => setActiveModal('meiConfig')}
                     setMeiStatus={setMeiStatus}
                     setMeiInfo={setMeiInfo}
                     meiPopupShown={meiPopupShown}

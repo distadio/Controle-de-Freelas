@@ -40,9 +40,9 @@ const FAB: React.FC<FABProps> = ({ onMenuClick }) => {
                 onClick={toggleMenu}
             ></div>
             
-            <div 
-                ref={menuRef} 
-                className={`absolute bottom-52 left-1/2 -translate-x-1/2 z-40 transition-all duration-300 ease-[cubic-bezier(0.68,-0.55,0.265,1.55)] ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-80 invisible'}`}
+            <div
+                ref={menuRef}
+                className={`absolute bottom-52 right-4 z-40 transition-all duration-300 ease-[cubic-bezier(0.68,-0.55,0.265,1.55)] origin-bottom-right ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-80 invisible'}`}
             >
                  <div className="bg-white rounded-2xl shadow-2xl min-w-[280px]">
                      {menuItems.map((item, index) => (
@@ -70,7 +70,7 @@ const FAB: React.FC<FABProps> = ({ onMenuClick }) => {
             <button
                 id="fab-button"
                 onClick={toggleMenu}
-                className="absolute bottom-32 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center text-white text-3xl font-light cursor-pointer shadow-lg hover:scale-110 transition-transform duration-200 z-50 backdrop-blur-md border-2 border-white/30"
+                className="absolute bottom-36 right-4 w-14 h-14 rounded-full flex items-center justify-center text-white text-3xl font-light cursor-pointer shadow-lg hover:scale-110 transition-transform duration-200 z-50 backdrop-blur-md border-2 border-white/30"
                 style={{
                     background: 'linear-gradient(135deg, rgba(102,126,234,0.7) 0%, rgba(118,75,162,0.7) 100%)',
                 }}

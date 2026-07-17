@@ -9,6 +9,8 @@ interface FreelaDetailsModalProps {
     onEdit: (freela: Freela) => void;
     onDelete: (id: string) => void;
     onTogglePayment: (freela: Freela) => void;
+    onDuplicate: (freela: Freela) => void;
+    onUpdate: (freela: Freela) => void;
 }
 
 const DetailItem: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
@@ -18,11 +20,41 @@ const DetailItem: React.FC<{ label: string; value: React.ReactNode }> = ({ label
     </div>
 );
 
-const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose, freela, onEdit, onDelete, onTogglePayment }) => {
+const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose, freela, onEdit, onDelete, onTogglePayment, onDuplicate, onUpdate }) => {
     const [confirmDelete, setConfirmDelete] = React.useState(false);
+    const [copied, setCopied] = React.useState(false);
 
     const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
     const formatDate = (dateString?: string | null) => dateString ? new Date(dateString + 'T00:00:00').toLocaleDateString('pt-BR') : '-';
+
+    // Compartilhamento nativo (WhatsApp etc.) com fallback para copiar
+    const handleShare = async () => {
+        const linhas = [
+            `🎭 *${freela.descricao}*`,
+            `📅 ${formatDate(freela.data_evento)}${freela.horario_inicio ? ` • ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}` : ''}`,
+        ];
+        if (freela.local) linhas.push(`📍 ${freela.local}`);
+        if (freela.contratante) linhas.push(`👤 ${freela.contratante}`);
+        linhas.push(`💰 ${formatCurrency(freela.valor)}`);
+        linhas.push(freela.status === 'pago'
+            ? `✅ Pago${freela.data_pagamento ? ` em ${formatDate(freela.data_pagamento)}` : ''}`
+            : `⏳ Pagamento pendente${freela.data_vencimento ? ` (vence ${formatDate(freela.data_vencimento)})` : ''}`);
+        if (freela.observacoes) linhas.push(`📝 ${freela.observacoes}`);
+        linhas.push('', '_Gerado pelo Controle de Freelas_');
+        const texto = linhas.join('\n');
+
+        if (navigator.share) {
+            try {
+                await navigator.share({ title: freela.descricao, text: texto });
+            } catch { /* usuário cancelou */ }
+        } else {
+            try {
+                await navigator.clipboard.writeText(texto);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            } catch { /* clipboard indisponível */ }
+        }
+    };
 
     const statusInfo = {
         pago: { badge: 'status-paid', text: 'Pago', button: 'Marcar como Pendente', btnClass: 'bg-yellow-500 hover:bg-yellow-600' },
@@ -61,6 +93,17 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
                 <div className="space-y-3 text-sm border-t border-gray-200 pt-4">
                     {(freela.horario_inicio || freela.horario_fim) && <DetailItem label="Horário" value={`${freela.horario_inicio || ''} - ${freela.horario_fim || ''}`} />}
                     {freela.data_vencimento && <DetailItem label="Vencimento" value={formatDate(freela.data_vencimento)} />}
+                    {freela.status === 'pago' && (
+                        <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-600">Pago em:</span>
+                            <input
+                                type="date"
+                                value={freela.data_pagamento || ''}
+                                onChange={(e) => onUpdate({ ...freela, data_pagamento: e.target.value || null, updated_at: new Date().toISOString() })}
+                                className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                    )}
                     {freela.tipo_servico && <DetailItem label="Tipo" value={freela.tipo_servico.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} />}
                     {freela.categoria && <DetailItem 
                         label="Categoria" 
@@ -76,10 +119,16 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
                     {freela.declara_mei && <div className="bg-blue-50 border border-blue-200 rounded p-2 mt-2"><span className="font-semibold text-blue-700">✓ Declarado como MEI</span></div>}
                 </div>
 
-                <div className="flex gap-3 pt-4 border-t border-gray-200">
-                    <button onClick={() => onEdit(freela)} className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 transition-colors font-semibold">Editar</button>
-                    <button onClick={handleDeleteClick} className={`flex-1 text-white py-2.5 rounded-lg transition-colors font-semibold ${confirmDelete ? 'bg-red-700 hover:bg-red-800' : 'bg-red-500 hover:bg-red-600'}`}>
-                        {confirmDelete ? 'Confirmar Exclusão?' : 'Excluir'}
+                <div className="grid grid-cols-2 gap-3 pt-4 border-t border-gray-200">
+                    <button onClick={handleShare} className="bg-emerald-600 text-white py-2.5 rounded-lg hover:bg-emerald-700 transition-colors font-semibold flex items-center justify-center gap-2">
+                        <span>📤</span> {copied ? 'Copiado!' : 'Compartilhar'}
+                    </button>
+                    <button onClick={() => onDuplicate(freela)} className="bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 transition-colors font-semibold flex items-center justify-center gap-2">
+                        <span>📄</span> Duplicar
+                    </button>
+                    <button onClick={() => onEdit(freela)} className="bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 transition-colors font-semibold">Editar</button>
+                    <button onClick={handleDeleteClick} className={`text-white py-2.5 rounded-lg transition-colors font-semibold ${confirmDelete ? 'bg-red-700 hover:bg-red-800' : 'bg-red-500 hover:bg-red-600'}`}>
+                        {confirmDelete ? 'Confirmar?' : 'Excluir'}
                     </button>
                 </div>
             </div>

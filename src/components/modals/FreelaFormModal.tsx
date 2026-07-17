@@ -2,21 +2,52 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Freela, TipoServico, Categoria } from '../../types';
 import BaseModal from './BaseModal';
+import { normalizeName, nameKey } from '../../services/textService';
 
 interface FreelaFormModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (freela: Freela) => void;
+    onSaveMany: (freelas: Freela[]) => void;
     freelaToEdit: Freela | null;
     selectedDate: string | null;
     allFreelas: Freela[];
     onConflict: (conflictingFreela: Freela, newFreelaData: Partial<Freela>) => void;
 }
 
-const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSave, freelaToEdit, selectedDate, allFreelas, onConflict }) => {
+// Desloca uma data YYYY-MM-DD em N dias
+const shiftDate = (dateStr: string, days: number): string => {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSave, onSaveMany, freelaToEdit, selectedDate, allFreelas, onConflict }) => {
     const [formData, setFormData] = useState<Partial<Freela>>({});
+    const [repetirSemanas, setRepetirSemanas] = useState(0);
+
+    // Duplicação chega como freelaToEdit com id vazio (novo registro pré-preenchido)
+    const isEditing = !!(freelaToEdit && freelaToEdit.id);
+    const isDuplicating = !!(freelaToEdit && !freelaToEdit.id);
+
+    // Sugestões de contratantes e locais já usados (dedup por nome normalizado)
+    const { contratantes, locais } = useMemo(() => {
+        const cMap = new Map<string, string>();
+        const lMap = new Map<string, string>();
+        allFreelas.forEach(f => {
+            const ck = nameKey(f.contratante);
+            if (ck && !cMap.has(ck)) cMap.set(ck, normalizeName(f.contratante));
+            const lk = nameKey(f.local);
+            if (lk && !lMap.has(lk)) lMap.set(lk, normalizeName(f.local));
+        });
+        return {
+            contratantes: [...cMap.values()].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+            locais: [...lMap.values()].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        };
+    }, [allFreelas]);
 
     useEffect(() => {
+        setRepetirSemanas(0);
         if (freelaToEdit) {
             setFormData(freelaToEdit);
         } else {
@@ -94,19 +125,38 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSa
         
         const now = new Date().toISOString();
         const freelaData: Freela = {
-            id: freelaToEdit?.id || `freela_${Date.now()}`,
             descricao: formData.descricao || '',
             valor: formData.valor || 0,
             data_evento: formData.data_evento || '',
-            status: freelaToEdit?.status || 'pendente',
-            created_at: freelaToEdit?.created_at || now,
-            updated_at: now,
             ...formData,
+            id: isEditing ? freelaToEdit!.id : `freela_${Date.now()}`,
+            status: isEditing ? (freelaToEdit!.status as string) : 'pendente',
+            created_at: isEditing ? freelaToEdit!.created_at : now,
+            updated_at: now,
+            contratante: normalizeName(formData.contratante) || null,
+            local: normalizeName(formData.local) || null,
             tipo_servico: formData.tipo_servico || TipoServico.Outro,
             categoria: formData.categoria || Categoria.Outro,
             categoria_customizada: formData.categoria === 'outro' ? formData.categoria_customizada : null,
             declara_mei: formData.declara_mei || false,
         };
+
+        // Recorrência semanal: cria cópias nas semanas seguintes (só em cadastro novo)
+        if (!isEditing && repetirSemanas > 0) {
+            const ocorrencias: Freela[] = [];
+            for (let i = 0; i <= repetirSemanas; i++) {
+                const dias = i * 7;
+                ocorrencias.push({
+                    ...freelaData,
+                    id: `freela_${Date.now()}_${i}`,
+                    data_evento: shiftDate(freelaData.data_evento, dias),
+                    data_vencimento: freelaData.data_vencimento ? shiftDate(freelaData.data_vencimento, dias) : null,
+                });
+            }
+            onSaveMany(ocorrencias);
+            return;
+        }
+
         onSave(freelaData);
     };
 
@@ -145,7 +195,7 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSa
 
 
     return (
-        <BaseModal isOpen={isOpen} onClose={onClose} title={freelaToEdit ? 'Editar Freela' : 'Novo Freela'} titleIcon="📝">
+        <BaseModal isOpen={isOpen} onClose={onClose} title={isEditing ? 'Editar Freela' : isDuplicating ? 'Duplicar Freela' : 'Novo Freela'} titleIcon="📝">
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
                  <div>
                     <label htmlFor="descricao" className="block text-sm font-medium text-gray-700 mb-1">Descrição *</label>
@@ -207,11 +257,17 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSa
                 )}
                 <div>
                     <label htmlFor="local" className="block text-sm font-medium text-gray-700 mb-1">Local</label>
-                    <input type="text" id="local" name="local" value={formData.local || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: Teatro Municipal"/>
+                    <input type="text" id="local" name="local" list="locais-sugeridos" value={formData.local || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: Teatro Municipal"/>
+                    <datalist id="locais-sugeridos">
+                        {locais.map(l => <option key={l} value={l} />)}
+                    </datalist>
                 </div>
                 <div>
                     <label htmlFor="contratante" className="block text-sm font-medium text-gray-700 mb-1">Contratante</label>
-                    <input type="text" id="contratante" name="contratante" value={formData.contratante || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: João Silva"/>
+                    <input type="text" id="contratante" name="contratante" list="contratantes-sugeridos" value={formData.contratante || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: João Silva"/>
+                    <datalist id="contratantes-sugeridos">
+                        {contratantes.map(c => <option key={c} value={c} />)}
+                    </datalist>
                 </div>
                 <div>
                     <label htmlFor="observacoes" className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
@@ -226,6 +282,23 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSa
                         </div>
                     </label>
                 </div>
+                {!isEditing && (
+                    <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
+                        <label htmlFor="repetirSemanas" className="block font-semibold text-gray-900 mb-1">🔁 Repetir semanalmente</label>
+                        <select
+                            id="repetirSemanas"
+                            value={repetirSemanas}
+                            onChange={(e) => setRepetirSemanas(parseInt(e.target.value))}
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        >
+                            <option value={0}>Não repetir</option>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(n => (
+                                <option key={n} value={n}>+{n} semana{n > 1 ? 's' : ''} ({n + 1} freelas no total)</option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-600 mt-1">Cria cópias deste freela nas próximas semanas, no mesmo dia e horário.</p>
+                    </div>
+                )}
                 <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium">Salvar Freela</button>
             </form>
         </BaseModal>
