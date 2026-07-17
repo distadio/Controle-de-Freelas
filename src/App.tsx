@@ -601,7 +601,14 @@ const App: React.FC = () => {
                     meiPopupShown={meiPopupShown}
                     setMeiPopupShown={setMeiPopupShown}
                 />
-                <FAB onMenuClick={(action) => setActiveModal(action)} />
+                <FAB onMenuClick={(action) => {
+                    if (action === 'feedback') {
+                        const texto = encodeURIComponent('Olá! Tenho um feedback sobre o app Controle de Freelas: ');
+                        window.open(`https://wa.me/5511995700408?text=${texto}`, '_blank', 'noopener');
+                        return;
+                    }
+                    setActiveModal(action);
+                }} />
                 
                 {modalRoot && ReactDOM.createPortal(modals, modalRoot)}
             </div>

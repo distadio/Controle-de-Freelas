@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 interface FABProps {
-    onMenuClick: (action: 'freelaForm' | 'backup' | 'dashboard' | 'syncGoogle' | 'about' | 'policies') => void;
+    onMenuClick: (action: 'freelaForm' | 'backup' | 'dashboard' | 'syncGoogle' | 'about' | 'policies' | 'feedback') => void;
 }
 
 const menuItems = [
@@ -11,6 +11,7 @@ const menuItems = [
     { id: 'syncGoogle', icon: '🔄', title: 'Sincronizar com Google', description: 'Exporte para Google Agenda', action: () => {} },
     { id: 'about', icon: 'ℹ️', title: 'Sobre o Aplicativo', description: 'Versão e direitos autorais', action: () => {} },
     { id: 'policies', icon: '📜', title: 'Políticas de Privacidade e Uso', description: 'Consulte privacidade e termos', action: () => {} },
+    { id: 'feedback', icon: '💬', title: 'Enviar Feedback', description: 'Fale com o desenvolvedor no WhatsApp', action: () => {} },
 ];
 
 const FAB: React.FC<FABProps> = ({ onMenuClick }) => {

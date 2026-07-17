@@ -28,7 +28,28 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onStart }) => {
             <div className="text-base text-white text-center font-semibold animate-pulse-slow drop-shadow-lg mt-10">
                 Toque em qualquer lugar para começar
             </div>
-            <div className="absolute bottom-8 text-center text-xs text-white/70 font-normal drop-shadow-md">
+            <div className="absolute bottom-8 text-center text-xs text-white/70 font-normal drop-shadow-md px-4">
+                <div className="mb-2 space-x-2">
+                    <a
+                        href="/app/politica-privacidade.html"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="underline hover:text-white transition-colors"
+                    >
+                        Política de Privacidade
+                    </a>
+                    <span>•</span>
+                    <a
+                        href="/app/termos-servico.html"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="underline hover:text-white transition-colors"
+                    >
+                        Termos de Serviço
+                    </a>
+                </div>
                 este app foi desenvolvido por pulodogatoead
             </div>
         </div>
