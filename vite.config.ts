@@ -32,6 +32,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+        // Dependências opcionais do jsPDF (html(), SVG) que o app não usa: fora do cache offline
+        globIgnores: ['**/html2canvas*', '**/purify.es*', '**/index.es-*'],
         navigateFallback: '/app/index.html',
         // As APIs do Google precisam de rede; nunca servir do cache.
         navigateFallbackDenylist: [/^\/app\/politica-privacidade/, /^\/app\/termos-servico/],

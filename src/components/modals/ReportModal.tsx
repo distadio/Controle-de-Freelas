@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { Freela, Categoria, TipoServico } from '../../types';
 import BaseModal from './BaseModal';
+import InvoiceModal from './InvoiceModal';
 import { normalizeName, nameKey } from '../../services/textService';
 import { periodoFreelaTexto } from '../../services/bloqueioService';
 
@@ -11,7 +13,22 @@ interface ReportModalProps {
     currentDate: Date;
 }
 
-type Scope = 'mes' | 'trimestre' | 'ano' | 'tudo';
+type Scope = 'mes' | 'trimestre' | 'ano' | 'tudo' | 'datas';
+
+interface Filtros {
+    contratante: string;
+    tipo: string;
+    categoria: string;
+    status: string;
+    local: string;
+    mei: string;
+    busca: string;
+}
+
+const FILTROS_VAZIOS: Filtros = { contratante: '', tipo: '', categoria: '', status: '', local: '', mei: '', busca: '' };
+
+const STATUS_LABEL: Record<string, string> = { pago: 'Pago', pendente: 'Pendente', atrasada: 'Atrasado' };
+const rotuloEnum = (v: string) => v.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const monthShort = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -26,19 +43,31 @@ const CategoriaInfo: Record<string, { icon: string; label: string }> = {
 
 const fmtDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-const getPeriodRange = (anchor: Date, scope: Scope): { start: string; end: string } | null => {
+const getPeriodRange = (anchor: Date, scope: Scope, datas?: { de: string; ate: string }): { start: string; end: string } | null => {
     const y = anchor.getFullYear();
     const m = anchor.getMonth();
     if (scope === 'tudo') return null;
+    if (scope === 'datas') {
+        if (!datas || (!datas.de && !datas.ate)) return null;
+        return { start: datas.de || '0000-01-01', end: datas.ate || '9999-12-31' };
+    }
     if (scope === 'mes') return { start: fmtDate(new Date(y, m, 1)), end: fmtDate(new Date(y, m + 1, 0)) };
     if (scope === 'trimestre') return { start: fmtDate(new Date(y, m - 2, 1)), end: fmtDate(new Date(y, m + 1, 0)) };
     return { start: fmtDate(new Date(y, 0, 1)), end: fmtDate(new Date(y, 11, 31)) };
 };
 
-const getPeriodLabel = (anchor: Date, scope: Scope): string => {
+const dataBR = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
+
+const getPeriodLabel = (anchor: Date, scope: Scope, datas?: { de: string; ate: string }): string => {
     const y = anchor.getFullYear();
     const m = anchor.getMonth();
     if (scope === 'tudo') return 'Todo o período';
+    if (scope === 'datas') {
+        if (datas?.de && datas?.ate) return `${dataBR(datas.de)} a ${dataBR(datas.ate)}`;
+        if (datas?.de) return `A partir de ${dataBR(datas.de)}`;
+        if (datas?.ate) return `Até ${dataBR(datas.ate)}`;
+        return 'Todo o período';
+    }
     if (scope === 'mes') return `${monthLong[m]} ${y}`;
     if (scope === 'ano') return `${y}`;
     const startDate = new Date(y, m - 2, 1);
@@ -66,34 +95,66 @@ const getCategoriaDisplay = (freela: Freela): { icon: string; label: string } =>
 const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, currentDate }) => {
     const [scope, setScope] = useState<Scope>('mes');
     const [anchor, setAnchor] = useState<Date>(currentDate);
-    const [filters, setFilters] = useState({ status: '', categoria: '', tipo: '', mei: '' });
+    const [filters, setFilters] = useState<Filtros>(FILTROS_VAZIOS);
     const [showFilters, setShowFilters] = useState(false);
+    const [datas, setDatas] = useState({ de: '', ate: '' });
+    const [showInvoice, setShowInvoice] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
             setAnchor(currentDate);
             setScope('mes');
-            setFilters({ status: '', categoria: '', tipo: '', mei: '' });
+            setFilters(FILTROS_VAZIOS);
+            setDatas({ de: '', ate: '' });
             setShowFilters(false);
+            setShowInvoice(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
-    const periodLabel = getPeriodLabel(anchor, scope);
+    const periodLabel = getPeriodLabel(anchor, scope, datas);
     const activeFilterCount = Object.values(filters).filter(v => v !== '').length;
 
-    const applyFilters = (list: Freela[]) => list.filter(f =>
-        (!filters.status || f.status === filters.status)
-        && (!filters.categoria || f.categoria === filters.categoria)
-        && (!filters.tipo || f.tipo_servico === filters.tipo)
-        && (filters.mei === '' || (filters.mei === 'true' ? f.declara_mei : !f.declara_mei))
-    );
+    // Opções de contratante e local vindas dos próprios freelas (nomes normalizados, sem duplicatas)
+    const { opcoesContratante, opcoesLocal } = useMemo(() => {
+        const unicos = (valores: (string | null | undefined)[]) => {
+            const mapa = new Map<string, string>();
+            valores.forEach(v => { const k = nameKey(v); if (k && !mapa.has(k)) mapa.set(k, normalizeName(v)); });
+            return [...mapa.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        };
+        return { opcoesContratante: unicos(freelas.map(f => f.contratante)), opcoesLocal: unicos(freelas.map(f => f.local)) };
+    }, [freelas]);
+
+    const applyFilters = (list: Freela[]) => {
+        const busca = filters.busca.trim().toLocaleLowerCase('pt-BR');
+        return list.filter(f =>
+            (!filters.contratante || nameKey(f.contratante) === nameKey(filters.contratante))
+            && (!filters.tipo || f.tipo_servico === filters.tipo)
+            && (!filters.categoria || f.categoria === filters.categoria)
+            && (!filters.status || f.status === filters.status)
+            && (!filters.local || nameKey(f.local) === nameKey(filters.local))
+            && (filters.mei === '' || (filters.mei === 'true' ? f.declara_mei : !f.declara_mei))
+            && (!busca || `${f.descricao} ${f.observacoes || ''}`.toLocaleLowerCase('pt-BR').includes(busca))
+        );
+    };
+
+    // Descrição legível dos filtros ativos (tela, PDF e Excel)
+    const filtrosAtivos: { chave: keyof Filtros; texto: string }[] = [
+        filters.contratante && { chave: 'contratante' as const, texto: `Contratante: ${filters.contratante}` },
+        filters.tipo && { chave: 'tipo' as const, texto: `Tipo: ${rotuloEnum(filters.tipo)}` },
+        filters.categoria && { chave: 'categoria' as const, texto: `Categoria: ${rotuloEnum(filters.categoria)}` },
+        filters.status && { chave: 'status' as const, texto: `Status: ${STATUS_LABEL[filters.status]}` },
+        filters.local && { chave: 'local' as const, texto: `Local: ${filters.local}` },
+        filters.mei && { chave: 'mei' as const, texto: filters.mei === 'true' ? 'MEI declarado' : 'MEI não declarado' },
+        filters.busca.trim() && { chave: 'busca' as const, texto: `Busca: "${filters.busca.trim()}"` },
+    ].filter(Boolean) as { chave: keyof Filtros; texto: string }[];
+    const descricaoFiltros = filtrosAtivos.map(f => f.texto).join(' | ');
 
     const inRange = (list: Freela[], range: { start: string; end: string } | null) =>
         range ? list.filter(f => f.data_evento >= range.start && f.data_evento <= range.end) : list;
 
     const { filteredFreelas, stats, prevStats, categorias, contratantes } = useMemo(() => {
-        const range = getPeriodRange(anchor, scope);
+        const range = getPeriodRange(anchor, scope, datas);
         const filteredFreelas = applyFilters(inRange(freelas, range))
             .sort((a, b) => a.data_evento.localeCompare(b.data_evento));
 
@@ -118,7 +179,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
         const stats = calcStats(filteredFreelas);
 
         let prevStats: ReturnType<typeof calcStats> | null = null;
-        if (scope !== 'tudo') {
+        if (scope !== 'tudo' && scope !== 'datas') {
             const prevRange = getPeriodRange(shiftAnchor(anchor, scope, -1), scope);
             prevStats = calcStats(applyFilters(inRange(freelas, prevRange)));
         }
@@ -147,15 +208,18 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
 
         return { filteredFreelas, stats, prevStats, categorias, contratantes };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [freelas, anchor, scope, filters]);
+    }, [freelas, anchor, scope, filters, datas]);
 
     const deltaPercent = prevStats && prevStats.total > 0
         ? Math.round(((stats.total - prevStats.total) / prevStats.total) * 100)
         : null;
 
-    const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
         setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
+
+    const sufixoArquivo = [periodLabel, filters.contratante].filter(Boolean).join(' ')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
     // ---------- Export: CSV (Excel pt-BR: separador ; e decimal ,) ----------
     const csvNumber = (v: number) => v.toFixed(2).replace('.', ',');
@@ -182,13 +246,16 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
             ['Atrasado', '', '', '', '', '', '', '', csvNumber(stats.late)],
             ['MEI Declarado', '', '', '', '', '', '', '', csvNumber(stats.mei)],
             ['Ticket Médio', '', '', '', '', '', '', '', csvNumber(stats.avg)],
+            [],
+            ['Período', esc(periodLabel)],
+            ...(descricaoFiltros ? [['Filtros aplicados', esc(descricaoFiltros)]] : []),
         ];
         const csv = '\uFEFF' + rows.map(r => r.join(';')).join('\r\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `relatorio-freelas-${periodLabel.replace(/[\s–]+/g, '-').toLowerCase()}.csv`;
+        link.download = `relatorio-freelas-${sufixoArquivo}.csv`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -215,12 +282,13 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
         const clisHtml = contratantes.map(c => `
             <tr><td>${c.name}</td><td>${c.count}</td><td class="num">${formatCurrency(c.total)}</td></tr>`).join('');
 
-        const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de Freelas - ${periodLabel}</title>
+        const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>relatorio-freelas-${sufixoArquivo}</title>
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #1f2937; font-size: 12px; }
     h1 { font-size: 20px; margin-bottom: 2px; }
-    .sub { color: #6b7280; margin-bottom: 16px; }
+    .sub { color: #6b7280; margin-bottom: 8px; }
+    .filtros { background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; color: #4c1d95; font-weight: 600; }
     h2 { font-size: 14px; margin: 18px 0 6px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
     .kpis { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     .kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; min-width: 130px; }
@@ -238,8 +306,9 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
     tfoot td { border-top: 2px solid #1f2937; font-weight: 700; font-size: 13px; }
     @media print { body { padding: 8px; } }
 </style></head><body>
-    <h1>Relatório de Freelas — ${periodLabel}</h1>
-    <div class="sub">Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${activeFilterCount > 0 ? ' • Filtros aplicados' : ''}</div>
+    <h1>Relatório de Freelas${filters.contratante ? ` — ${filters.contratante}` : ''} — ${periodLabel}</h1>
+    <div class="sub">Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+    ${descricaoFiltros ? `<div class="filtros">Filtros: ${descricaoFiltros}</div>` : ''}
 
     <h2>Resumo do Período</h2>
     <div class="kpis">
@@ -283,6 +352,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
         { id: 'trimestre', label: '3 Meses' },
         { id: 'ano', label: 'Ano' },
         { id: 'tudo', label: 'Tudo' },
+        { id: 'datas', label: 'Datas' },
     ];
 
     const maxCat = categorias.length > 0 ? categorias[0].total : 0;
@@ -294,7 +364,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
 
                 {/* Seletor de período */}
                 <div className="bg-white rounded-xl shadow-sm p-2 space-y-2">
-                    <div className="grid grid-cols-4 gap-1">
+                    <div className="grid grid-cols-5 gap-1">
                         {scopes.map(s => (
                             <button
                                 key={s.id}
@@ -305,7 +375,19 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                             </button>
                         ))}
                     </div>
-                    {scope !== 'tudo' && (
+                    {scope === 'datas' && (
+                        <div className="grid grid-cols-2 gap-2 px-1 pb-1">
+                            <div>
+                                <label htmlFor="relDe" className="block text-[11px] font-medium text-gray-600 mb-0.5">De</label>
+                                <input id="relDe" type="date" value={datas.de} onChange={(e) => setDatas(d => ({ ...d, de: e.target.value }))} className="w-full px-2 py-2 border-2 border-gray-300 rounded-lg text-sm" />
+                            </div>
+                            <div>
+                                <label htmlFor="relAte" className="block text-[11px] font-medium text-gray-600 mb-0.5">Até</label>
+                                <input id="relAte" type="date" value={datas.ate} min={datas.de || undefined} onChange={(e) => setDatas(d => ({ ...d, ate: e.target.value }))} className="w-full px-2 py-2 border-2 border-gray-300 rounded-lg text-sm" />
+                            </div>
+                        </div>
+                    )}
+                    {scope !== 'tudo' && scope !== 'datas' && (
                         <div className="flex items-center justify-between">
                             <button onClick={() => setAnchor(a => shiftAnchor(a, scope, -1))} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600" aria-label="Período anterior">
                                 <svg width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
@@ -314,6 +396,46 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                             <button onClick={() => setAnchor(a => shiftAnchor(a, scope, 1))} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600" aria-label="Próximo período">
                                 <svg width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
                             </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Filtros */}
+                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <button onClick={() => setShowFilters(v => !v)} className="w-full flex items-center justify-between p-3 text-sm font-bold text-gray-800">
+                        <span className="flex items-center gap-2 text-left">
+                            🔍 Filtrar por contratante, serviço, status...
+                            {activeFilterCount > 0 && <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full">{activeFilterCount}</span>}
+                        </span>
+                        <span className={`transition-transform ${showFilters ? 'rotate-180' : ''}`}>▼</span>
+                    </button>
+                    {filtrosAtivos.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+                            {filtrosAtivos.map(f => (
+                                <button
+                                    key={f.chave}
+                                    onClick={() => setFilters(prev => ({ ...prev, [f.chave]: '' }))}
+                                    className="flex items-center gap-1 bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-1 rounded-full"
+                                    aria-label={`Remover filtro ${f.texto}`}
+                                >
+                                    {f.texto} <span className="text-purple-500">✕</span>
+                                </button>
+                            ))}
+                            <button onClick={() => setFilters(FILTROS_VAZIOS)} className="text-xs font-semibold text-gray-500 underline px-1">Limpar tudo</button>
+                        </div>
+                    )}
+                    {showFilters && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 pt-0">
+                            <FilterSelect name="contratante" value={filters.contratante} onChange={handleFilterChange} label="Contratante" options={{ '': 'Todos', ...Object.fromEntries(opcoesContratante.map(c => [c, c])) }} />
+                            <FilterSelect name="tipo" value={filters.tipo} onChange={handleFilterChange} label="Tipo de Serviço" options={{ '': 'Todos', ...Object.fromEntries(Object.values(TipoServico).map(v => [v, rotuloEnum(v)])) }} />
+                            <FilterSelect name="categoria" value={filters.categoria} onChange={handleFilterChange} label="Categoria / Função" options={{ '': 'Todas', ...Object.fromEntries(Object.values(Categoria).map(v => [v, rotuloEnum(v)])) }} />
+                            <FilterSelect name="status" value={filters.status} onChange={handleFilterChange} label="Status do pagamento" options={{ '': 'Todos', ...STATUS_LABEL }} />
+                            <FilterSelect name="local" value={filters.local} onChange={handleFilterChange} label="Local" options={{ '': 'Todos', ...Object.fromEntries(opcoesLocal.map(l => [l, l])) }} />
+                            <FilterSelect name="mei" value={filters.mei} onChange={handleFilterChange} label="MEI" options={{ '': 'Todos', 'true': 'Declarado', 'false': 'Não Declarado' }} />
+                            <div className="sm:col-span-2">
+                                <label htmlFor="relBusca" className="block text-xs font-medium text-gray-700 mb-1">Buscar na descrição / observações</label>
+                                <input id="relBusca" name="busca" value={filters.busca} onChange={handleFilterChange} placeholder="Ex: pagode, casamento..." className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm" />
+                            </div>
                         </div>
                     )}
                 </div>
@@ -358,25 +480,9 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                     <button onClick={handleExportPdf} className="bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition font-semibold text-sm flex items-center justify-center gap-2 shadow">
                         <span>📄</span> Exportar PDF
                     </button>
-                </div>
-
-                {/* Filtros */}
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <button onClick={() => setShowFilters(v => !v)} className="w-full flex items-center justify-between p-3 text-sm font-bold text-gray-800">
-                        <span className="flex items-center gap-2">
-                            🔍 Filtros
-                            {activeFilterCount > 0 && <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full">{activeFilterCount}</span>}
-                        </span>
-                        <span className={`transition-transform ${showFilters ? 'rotate-180' : ''}`}>▼</span>
+                    <button onClick={() => setShowInvoice(true)} className="col-span-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 rounded-xl hover:opacity-90 transition font-semibold text-sm flex items-center justify-center gap-2 shadow">
+                        <span>🧾</span> Gerar Invoice para {filters.contratante || 'contratante'} (com PIX)
                     </button>
-                    {showFilters && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 pt-0">
-                            <FilterSelect name="status" value={filters.status} onChange={handleFilterChange} label="Status" options={{ '': 'Todos', 'pago': 'Pago', 'pendente': 'Pendente', 'atrasada': 'Atrasado' }} />
-                            <FilterSelect name="categoria" value={filters.categoria} onChange={handleFilterChange} label="Categoria" options={{ '': 'Todas', ...Object.fromEntries(Object.values(Categoria).map(v => [v, v.replace(/_/g, ' ')])) }} />
-                            <FilterSelect name="tipo" value={filters.tipo} onChange={handleFilterChange} label="Tipo de Serviço" options={{ '': 'Todos', ...Object.fromEntries(Object.values(TipoServico).map(v => [v, v.replace(/_/g, ' ')])) }} />
-                            <FilterSelect name="mei" value={filters.mei} onChange={handleFilterChange} label="MEI" options={{ '': 'Todos', 'true': 'Declarado', 'false': 'Não Declarado' }} />
-                        </div>
-                    )}
                 </div>
 
                 {/* Por Categoria */}
@@ -424,6 +530,16 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                     )}
                 </div>
             </div>
+            {showInvoice && ReactDOM.createPortal(
+                <InvoiceModal
+                    isOpen={true}
+                    onClose={() => setShowInvoice(false)}
+                    freelas={freelas}
+                    contratanteInicial={filters.contratante || contratantes[0]?.name}
+                    periodoInicial={getPeriodRange(anchor, scope, datas)}
+                />,
+                document.getElementById('modal-root') || document.body
+            )}
         </BaseModal>
     );
 };
@@ -451,8 +567,8 @@ const BreakdownRow: React.FC<{ icon?: string; label: string; count: number; tota
 const FilterSelect: React.FC<{ name: string, value: string, onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void, label: string, options: Record<string, string> }> = ({ name, value, onChange, label, options }) => (
     <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
-        <select name={name} value={value} onChange={onChange} className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm capitalize">
-            {Object.entries(options).map(([val, text]) => <option key={val} value={val} className="capitalize">{text}</option>)}
+        <select name={name} value={value} onChange={onChange} className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm">
+            {Object.entries(options).map(([val, text]) => <option key={val} value={val}>{text}</option>)}
         </select>
     </div>
 );
