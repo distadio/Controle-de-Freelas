@@ -72,6 +72,9 @@ export const initGoogleClient = async (callback: (tokenResponse: any) => void) =
         tokenClient = window.google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: SCOPES,
+            // Não herda permissões concedidas em versões antigas do app (ex: o escopo
+            // "calendar" completo, que é sensível e dispara o aviso de app não verificado).
+            include_granted_scopes: false,
             callback: async (response: any) => {
                 console.log("🔐 Token response:", response);
                 
