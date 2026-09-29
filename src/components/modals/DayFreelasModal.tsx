@@ -2,6 +2,7 @@ import React from 'react';
 import { Freela } from '../../types';
 import BaseModal from './BaseModal';
 import FreelaCard from '../FreelaCard';
+import { isMultiDay } from '../../services/bloqueioService';
 
 interface DayFreelasModalProps {
     isOpen: boolean;
@@ -18,8 +19,10 @@ const DayFreelasModal: React.FC<DayFreelasModalProps> = ({ isOpen, onClose, date
     const formattedDate = dateObj.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
     const title = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
 
+    // Festival (período de vários dias) primeiro, depois os freelas do dia por horário
     const sortedFreelas = [...freelas].sort((a, b) =>
-        (a.horario_inicio || '').localeCompare(b.horario_inicio || '')
+        Number(isMultiDay(b)) - Number(isMultiDay(a))
+        || (a.horario_inicio || '').localeCompare(b.horario_inicio || '')
     );
 
     return (

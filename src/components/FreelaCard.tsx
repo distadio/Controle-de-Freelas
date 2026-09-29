@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Freela } from '../types';
+import { isMultiDay, daysBetween } from '../services/bloqueioService';
 
 interface FreelaCardProps {
     freela: Freela;
@@ -23,8 +24,12 @@ const CategoriaInfo: Record<string, { icon: string; label: string }> = {
 
 const FreelaCard: React.FC<FreelaCardProps> = ({ freela, onClick, allFreelas }) => {
     const date = new Date(freela.data_evento + 'T00:00:00');
-    const day = date.getDate();
-    const month = date.toLocaleDateString('pt-BR', { month: 'short' });
+    const festival = isMultiDay(freela);
+    const dateFim = festival ? new Date(freela.data_fim + 'T00:00:00') : date;
+    const day = festival ? `${date.getDate()}–${dateFim.getDate()}` : date.getDate();
+    const mesInicio = date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+    const mesFim = dateFim.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+    const month = mesInicio === mesFim ? mesInicio : `${mesInicio}/${mesFim}`;
     const styles = statusStyles[freela.status] || statusStyles.pendente;
 
     const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -51,11 +56,16 @@ const FreelaCard: React.FC<FreelaCardProps> = ({ freela, onClick, allFreelas }) 
               className="flex items-center gap-4 p-4"
             >
                 <div className="text-center w-12">
-                    <div className="text-2xl font-bold text-gray-900">{day}</div>
-                    <div className="text-xs text-gray-500 uppercase font-semibold">{month.replace('.', '')}</div>
+                    <div className={`${festival ? 'text-base' : 'text-2xl'} font-bold text-gray-900 whitespace-nowrap`}>{day}</div>
+                    <div className="text-xs text-gray-500 uppercase font-semibold">{month}</div>
                 </div>
                 <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 truncate mb-1">{freela.descricao}</p>
+                    {festival && (
+                        <span className="inline-block mb-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-violet-100 text-violet-800">
+                            🎪 Festival • {daysBetween(freela.data_evento, freela.data_fim!) + 1} dias • cachê único
+                        </span>
+                    )}
                     <div className="flex items-center gap-3 flex-wrap text-xs">
                         <span className={`inline-block px-2 py-1 font-semibold rounded-full ${styles.badgeBg} ${styles.badgeText}`}>{styles.text}</span>
                         {freela.horario_inicio && (

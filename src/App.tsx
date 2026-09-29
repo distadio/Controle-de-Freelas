@@ -1,7 +1,8 @@
 // Main application component.
 import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import ReactDOM from 'react-dom';
-import { Freela, Categoria, TipoServico } from './types';
+import { Freela, Categoria, TipoServico, Bloqueio } from './types';
+import { addDays, freelaCobre, findBloqueio, formatShortBR } from './services/bloqueioService';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useAuth } from './contexts/AuthContext';
 import { uploadBackup, getCloudBackup, findOrCreateCalendar, syncFreelaToCalendar, deleteCalendarEvent } from './services/googleService';
@@ -22,6 +23,7 @@ import ConflictModal from './components/modals/ConflictModal';
 import PrivacyPolicyModal from './components/modals/PrivacyPolicyModal';
 import AboutModal from './components/modals/AboutModal';
 import DayFreelasModal from './components/modals/DayFreelasModal';
+import BloqueioInfoModal from './components/modals/BloqueioInfoModal';
 
 // Carregado sob demanda: o Dashboard puxa Recharts e a lib do Gemini,
 // que são pesadas — assim o app abre mais rápido no celular.
@@ -37,6 +39,8 @@ const todayString = () => {
 const App: React.FC = () => {
     const [showSplash, setShowSplash] = useState(true);
     const [freelas, setFreelas] = useLocalStorage<Freela[]>('controle_freelas_data_v2', []);
+    const [bloqueios, setBloqueios] = useLocalStorage<Bloqueio[]>('controle_freelas_bloqueios', []);
+    const [selectedBloqueio, setSelectedBloqueio] = useState<Bloqueio | null>(null);
     const [isCloudAutoBackupEnabled, setCloudAutoBackupEnabled] = useLocalStorage('controle_freelas_auto_cloud_backup', false);
     const [privacyPolicyAccepted, setPrivacyPolicyAccepted] = useLocalStorage('controle_freelas_privacy_policy_accepted', false);
     const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
@@ -66,7 +70,7 @@ const App: React.FC = () => {
     const todayInfo = useMemo(() => {
         const today = todayString();
         const todayFreelas = freelas
-            .filter(f => f.data_evento === today)
+            .filter(f => freelaCobre(f, today))
             .sort((a, b) => (a.horario_inicio || '').localeCompare(b.horario_inicio || ''));
         const overdue = freelas.filter(f => f.status === 'atrasada');
         const overdueTotal = overdue.reduce((s, f) => s + f.valor, 0);
@@ -130,9 +134,7 @@ const App: React.FC = () => {
             debounceTimeoutRef.current = setTimeout(async () => {
                 console.log("Auto-saving to cloud...");
                 try {
-                    await uploadBackup(freelas);
-                     // Optionally show a subtle toast
-                     // showToast("Progresso salvo na nuvem.", "success");
+                    await uploadBackup(freelas, bloqueios);
                 } catch (error) {
                     console.error("Auto cloud backup failed:", error);
                     showToast("Falha no backup automático.", "error");
@@ -144,7 +146,7 @@ const App: React.FC = () => {
                 clearTimeout(debounceTimeoutRef.current);
             }
         };
-    }, [freelas, isLoggedIn, isCloudAutoBackupEnabled, showToast]);
+    }, [freelas, bloqueios, isLoggedIn, isCloudAutoBackupEnabled, showToast]);
 
     // On connecting to Google, reconcile local data with whatever is in the cloud:
     // whichever has more freelas (or, if tied, is more recently updated) wins, and
@@ -162,8 +164,8 @@ const App: React.FC = () => {
                 const cloudBackup = await getCloudBackup();
 
                 if (!cloudBackup) {
-                    if (freelas.length > 0) {
-                        await uploadBackup(freelas);
+                    if (freelas.length > 0 || bloqueios.length > 0) {
+                        await uploadBackup(freelas, bloqueios);
                         showToast('Backup inicial salvo no Google Drive.', 'success');
                     }
                     return;
@@ -180,9 +182,11 @@ const App: React.FC = () => {
 
                 if (cloudIsWinner) {
                     setFreelas(cloudBackup.data);
+                    // Backups antigos não têm bloqueios: nesse caso mantém os locais
+                    if (cloudBackup.bloqueios) setBloqueios(cloudBackup.bloqueios);
                     showToast('Dados mais recentes do Google Drive foram restaurados.', 'success');
-                } else if (freelas.length > 0) {
-                    await uploadBackup(freelas);
+                } else if (freelas.length > 0 || bloqueios.length > 0) {
+                    await uploadBackup(freelas, bloqueios);
                     showToast('Seus dados locais (mais recentes) foram salvos no Google Drive.', 'success');
                 }
             } catch (error) {
@@ -207,9 +211,39 @@ const App: React.FC = () => {
     };
 
     // Salva várias ocorrências de uma vez (recorrência semanal do formulário)
-    const handleSaveMany = (novos: Freela[]) => {
+    const handleSaveMany = (novos: Freela[], datasPuladas: string[]) => {
         setFreelas([...freelas, ...novos]);
-        showToast(`${novos.length} freelas adicionados!`);
+        showToast(datasPuladas.length > 0
+            ? `${novos.length} freelas adicionados. Pulados por bloqueio: ${datasPuladas.map(formatShortBR).join(', ')}`
+            : `${novos.length} freelas adicionados!`);
+        setActiveModal(null);
+    };
+
+    // ---- Bloqueio de agenda ----
+    const handleSaveBloqueio = (bloqueio: Bloqueio) => {
+        setBloqueios([...bloqueios, bloqueio]);
+        const dias = bloqueio.data_inicio === bloqueio.data_fim ? 'Data bloqueada' : 'Período bloqueado';
+        showToast(`${dias}!`);
+        setActiveModal(null);
+    };
+
+    // Desbloqueia um único dia: encurta ou divide o período em dois
+    const handleDesbloquearDia = (bloqueio: Bloqueio, date: string) => {
+        const partes: Bloqueio[] = [];
+        if (bloqueio.data_inicio < date) {
+            partes.push({ ...bloqueio, data_fim: addDays(date, -1) });
+        }
+        if (date < bloqueio.data_fim) {
+            partes.push({ ...bloqueio, id: `bloqueio_${Date.now()}`, data_inicio: addDays(date, 1) });
+        }
+        setBloqueios([...bloqueios.filter(b => b.id !== bloqueio.id), ...partes]);
+        showToast(`${formatShortBR(date)} desbloqueado!`);
+        setActiveModal(null);
+    };
+
+    const handleDesbloquearTudo = (bloqueio: Bloqueio) => {
+        setBloqueios(bloqueios.filter(b => b.id !== bloqueio.id));
+        showToast('Desbloqueado!');
         setActiveModal(null);
     };
 
@@ -391,10 +425,23 @@ const App: React.FC = () => {
                 onClose={() => setActiveModal(null)}
                 onSave={handleSaveFreela}
                 onSaveMany={handleSaveMany}
+                onSaveBloqueio={handleSaveBloqueio}
                 onConflict={handleConflict}
                 allFreelas={freelas}
+                bloqueios={bloqueios}
                 freelaToEdit={selectedFreela}
                 selectedDate={selectedDate}
+            />
+        )}
+
+        {activeModal === 'bloqueioInfo' && selectedBloqueio && selectedDate && (
+            <BloqueioInfoModal
+                isOpen={true}
+                onClose={() => setActiveModal(null)}
+                bloqueio={selectedBloqueio}
+                date={selectedDate}
+                onDesbloquearDia={handleDesbloquearDia}
+                onDesbloquearTudo={handleDesbloquearTudo}
             />
         )}
 
@@ -403,7 +450,7 @@ const App: React.FC = () => {
                 isOpen={true}
                 onClose={() => setActiveModal(null)}
                 date={selectedDate}
-                freelas={freelas.filter(f => f.data_evento === selectedDate)}
+                freelas={freelas.filter(f => freelaCobre(f, selectedDate))}
                 allFreelas={freelas}
                 onNewFreela={() => {
                     setSelectedFreela(null);
@@ -438,6 +485,8 @@ const App: React.FC = () => {
                 onClose={() => setActiveModal(null)}
                 freelas={freelas}
                 setFreelas={setFreelas}
+                bloqueios={bloqueios}
+                setBloqueios={setBloqueios}
                 showToast={showToast}
                 isLoggedIn={isLoggedIn}
                 user={user}
@@ -572,10 +621,17 @@ const App: React.FC = () => {
                         <Calendar
                             currentDate={currentDate}
                             freelas={freelas}
+                            bloqueios={bloqueios}
                             onDayClick={(date) => {
                                 setSelectedDate(date);
                                 setSelectedFreela(null);
-                                const hasFreelas = freelas.some(f => f.data_evento === date);
+                                const bloqueio = findBloqueio(bloqueios, date);
+                                if (bloqueio) {
+                                    setSelectedBloqueio(bloqueio);
+                                    setActiveModal('bloqueioInfo');
+                                    return;
+                                }
+                                const hasFreelas = freelas.some(f => freelaCobre(f, date));
                                 setActiveModal(hasFreelas ? 'dayFreelas' : 'freelaForm');
                             }}
                         />

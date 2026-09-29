@@ -1,6 +1,7 @@
 import React from 'react';
 import { Freela } from '../../types';
 import BaseModal from './BaseModal';
+import { isMultiDay, daysBetween } from '../../services/bloqueioService';
 
 interface FreelaDetailsModalProps {
     isOpen: boolean;
@@ -26,12 +27,16 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
 
     const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
     const formatDate = (dateString?: string | null) => dateString ? new Date(dateString + 'T00:00:00').toLocaleDateString('pt-BR') : '-';
+    const festival = isMultiDay(freela);
+    const periodo = festival
+        ? `${formatDate(freela.data_evento)} a ${formatDate(freela.data_fim)} (${daysBetween(freela.data_evento, freela.data_fim!) + 1} dias)`
+        : formatDate(freela.data_evento);
 
     // Compartilhamento nativo (WhatsApp etc.) com fallback para copiar
     const handleShare = async () => {
         const linhas = [
             `🎭 *${freela.descricao}*`,
-            `📅 ${formatDate(freela.data_evento)}${freela.horario_inicio ? ` • ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}` : ''}`,
+            `📅 ${periodo}${freela.horario_inicio ? ` • ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}${festival ? ' (diário)' : ''}` : ''}`,
         ];
         if (freela.local) linhas.push(`📍 ${freela.local}`);
         if (freela.contratante) linhas.push(`👤 ${freela.contratante}`);
@@ -75,7 +80,10 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
         <BaseModal isOpen={isOpen} onClose={onClose} title="Detalhes do Freela">
             <div className="p-6 space-y-6">
                 <div>
-                    <p className="text-sm text-gray-500 mb-1">{formatDate(freela.data_evento)}</p>
+                    <p className="text-sm text-gray-500 mb-1">{periodo}</p>
+                    {festival && (
+                        <span className="inline-block mb-2 px-2 py-0.5 text-xs font-bold rounded-full bg-violet-100 text-violet-800">🎪 Festival / cachê único</span>
+                    )}
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">{freela.descricao}</h2>
                     <p className="text-3xl font-bold text-blue-600">{formatCurrency(freela.valor)}</p>
                 </div>

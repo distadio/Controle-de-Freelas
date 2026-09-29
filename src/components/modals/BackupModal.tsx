@@ -1,14 +1,16 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Freela, Backup, BackupConfig, GoogleUser, CloudBackupInfo } from '../../types';
+import { Freela, Backup, BackupConfig, GoogleUser, CloudBackupInfo, Bloqueio } from '../../types';
 import BaseModal from './BaseModal';
-import { uploadBackup, downloadBackup, getBackupMetadata } from '../../services/googleService';
+import { uploadBackup, getCloudBackup, getBackupMetadata } from '../../services/googleService';
 
 interface BackupModalProps {
     isOpen: boolean;
     onClose: () => void;
     freelas: Freela[];
     setFreelas: React.Dispatch<React.SetStateAction<Freela[]>>;
+    bloqueios: Bloqueio[];
+    setBloqueios: React.Dispatch<React.SetStateAction<Bloqueio[]>>;
     showToast: (message: string, type?: 'success' | 'error') => void;
     isLoggedIn: boolean;
     user: GoogleUser | null;
@@ -21,8 +23,8 @@ const BACKUP_KEY_PREFIX = 'controle_freelas_backup_';
 const BACKUP_CONFIG_KEY = 'controle_freelas_backup_config';
 const MAX_BACKUPS = 5;
 
-const BackupModal: React.FC<BackupModalProps> = ({ 
-    isOpen, onClose, freelas, setFreelas, showToast, 
+const BackupModal: React.FC<BackupModalProps> = ({
+    isOpen, onClose, freelas, setFreelas, bloqueios, setBloqueios, showToast,
     isLoggedIn, user, onLoginClick, isAutoBackupEnabled, onToggleAutoBackup 
 }) => {
     const [backups, setBackups] = useState<Backup[]>([]);
@@ -84,7 +86,7 @@ const BackupModal: React.FC<BackupModalProps> = ({
     const createBackup = useCallback((isManual = false) => {
         try {
             const currentBackups = getBackupsList();
-            const newBackup: Backup = { id: Date.now(), timestamp: new Date().toISOString(), data: freelas, count: freelas.length };
+            const newBackup: Backup = { id: Date.now(), timestamp: new Date().toISOString(), data: freelas, bloqueios, count: freelas.length };
             
             let updatedBackups = [newBackup, ...currentBackups];
             if (updatedBackups.length > MAX_BACKUPS) {
@@ -104,12 +106,13 @@ const BackupModal: React.FC<BackupModalProps> = ({
             if (isManual) showToast('Falha ao criar backup local', 'error');
             return false;
         }
-    }, [freelas, getBackupsList, showToast]);
+    }, [freelas, bloqueios, getBackupsList, showToast]);
 
     const restoreBackup = (backupId: number) => {
         const backup = backups.find(b => b.id === backupId);
         if (backup) {
             setFreelas(backup.data);
+            if (backup.bloqueios) setBloqueios(backup.bloqueios);
             showToast('Backup local restaurado com sucesso!');
             onClose();
         } else {
@@ -147,6 +150,9 @@ const BackupModal: React.FC<BackupModalProps> = ({
                 if (freelasToImport && Array.isArray(freelasToImport)) {
                     createBackup(); // Backup before import
                     setFreelas(freelasToImport);
+                    if (!Array.isArray(dataToImport) && Array.isArray(dataToImport.bloqueios)) {
+                        setBloqueios(dataToImport.bloqueios);
+                    }
                     showToast(`${freelasToImport.length} freelas importados!`);
                     onClose();
                 } else {
@@ -162,7 +168,7 @@ const BackupModal: React.FC<BackupModalProps> = ({
     const handleCloudUpload = async () => {
         setCloudLoading(true);
         try {
-            await uploadBackup(freelas);
+            await uploadBackup(freelas, bloqueios);
             await fetchCloudBackupInfo();
             showToast('Backup salvo na nuvem com sucesso!');
         } catch (error) {
@@ -176,10 +182,11 @@ const BackupModal: React.FC<BackupModalProps> = ({
     const handleCloudDownload = async () => {
         setCloudLoading(true);
         try {
-            const cloudFreelas = await downloadBackup();
-            if (cloudFreelas) {
+            const cloud = await getCloudBackup();
+            if (cloud) {
                 createBackup(); // Create local backup before restoring
-                setFreelas(cloudFreelas);
+                setFreelas(cloud.data);
+                if (cloud.bloqueios) setBloqueios(cloud.bloqueios);
                 showToast('Dados restaurados da nuvem!');
                 onClose();
             } else {
@@ -253,7 +260,7 @@ const BackupModal: React.FC<BackupModalProps> = ({
                 <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-4">
                     <h4 className="text-lg font-bold text-gray-900 mb-3">📤 Exportar / Importar Local</h4>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                         <button onClick={() => exportData({ type: 'manual_export', data: freelas }, `freelas-manual-backup-${Date.now()}.json`)} className="bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 transition font-medium flex items-center justify-center gap-2"><span>📥</span> Exportar Dados</button>
+                         <button onClick={() => exportData({ type: 'manual_export', data: freelas, bloqueios },`freelas-manual-backup-${Date.now()}.json`)} className="bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 transition font-medium flex items-center justify-center gap-2"><span>📥</span> Exportar Dados</button>
                          <button onClick={() => fileInputRef.current?.click()} className="bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition font-medium flex items-center justify-center gap-2"><span>📤</span> Importar Dados</button>
                          <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
                     </div>

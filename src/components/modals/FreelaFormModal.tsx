@@ -1,34 +1,65 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Freela, TipoServico, Categoria } from '../../types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Freela, TipoServico, Categoria, Bloqueio, TipoBloqueio } from '../../types';
 import BaseModal from './BaseModal';
 import { normalizeName, nameKey } from '../../services/textService';
+import {
+    addDays, daysBetween, eachDate, formatDateBR, formatShortBR, isMultiDay,
+    freelaCobre, findFestival, findBloqueio, rotuloBloqueio, periodoFreelaTexto,
+} from '../../services/bloqueioService';
 
 interface FreelaFormModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (freela: Freela) => void;
-    onSaveMany: (freelas: Freela[]) => void;
+    onSaveMany: (freelas: Freela[], datasPuladas: string[]) => void;
+    onSaveBloqueio: (bloqueio: Bloqueio) => void;
     freelaToEdit: Freela | null;
     selectedDate: string | null;
     allFreelas: Freela[];
+    bloqueios: Bloqueio[];
     onConflict: (conflictingFreela: Freela, newFreelaData: Partial<Freela>) => void;
 }
 
-// Desloca uma data YYYY-MM-DD em N dias
-const shiftDate = (dateStr: string, days: number): string => {
-    const d = new Date(dateStr + 'T00:00:00');
-    d.setDate(d.getDate() + days);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+type Justificativa = 'ferias' | 'festival' | 'outros';
 
-const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSave, onSaveMany, freelaToEdit, selectedDate, allFreelas, onConflict }) => {
+const JUSTIFICATIVAS: { id: Justificativa; icon: string; titulo: string; desc: string }[] = [
+    { id: 'ferias', icon: '🏖️', titulo: 'Férias', desc: 'Data fica indisponível' },
+    { id: 'festival', icon: '🎪', titulo: 'Festival ou cachê único', desc: 'Vários dias, valor único' },
+    { id: 'outros', icon: '📌', titulo: 'Outros', desc: 'Doença, pessoal...' },
+];
+
+const MAX_DIAS = 366;
+
+const inputClass = 'w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
+
+const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
+    isOpen, onClose, onSave, onSaveMany, onSaveBloqueio, freelaToEdit, selectedDate, allFreelas, bloqueios, onConflict,
+}) => {
     const [formData, setFormData] = useState<Partial<Freela>>({});
     const [repetirSemanas, setRepetirSemanas] = useState(0);
+    const [modo, setModo] = useState<'freela' | 'bloqueio'>('freela');
+    const [justificativa, setJustificativa] = useState<Justificativa>('ferias');
+    const [periodo, setPeriodo] = useState<'dia' | 'intervalo'>('dia');
+    const [dataFim, setDataFim] = useState('');
+    const [motivo, setMotivo] = useState('');
+    const [erro, setErro] = useState<string | null>(null);
+    const [aviso, setAviso] = useState<string | null>(null);
+    const confirmadoRef = useRef(false);
+    const formRef = useRef<HTMLFormElement>(null);
 
     // Duplicação chega como freelaToEdit com id vazio (novo registro pré-preenchido)
     const isEditing = !!(freelaToEdit && freelaToEdit.id);
     const isDuplicating = !!(freelaToEdit && !freelaToEdit.id);
+    const isNovo = !isEditing && !isDuplicating;
+    const editingId = isEditing ? freelaToEdit!.id : undefined;
+
+    // Festival/cachê único: escolhido no modo bloqueio, ou editando/duplicando um festival existente
+    const festivalMode = modo === 'bloqueio'
+        ? justificativa === 'festival'
+        : !!(freelaToEdit && isMultiDay(freelaToEdit));
+    const mostraCamposFreela = modo === 'freela' || festivalMode;
 
     // Sugestões de contratantes e locais já usados (dedup por nome normalizado)
     const { contratantes, locais } = useMemo(() => {
@@ -48,6 +79,11 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSa
 
     useEffect(() => {
         setRepetirSemanas(0);
+        setModo('freela');
+        setJustificativa('ferias');
+        setPeriodo('dia');
+        setMotivo('');
+        setDataFim(freelaToEdit?.data_fim || '');
         if (freelaToEdit) {
             setFormData(freelaToEdit);
         } else {
@@ -63,6 +99,24 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSa
         }
     }, [freelaToEdit, selectedDate, isOpen]);
 
+    // Qualquer alteração invalida mensagens e confirmações anteriores
+    useEffect(() => {
+        setErro(null);
+        setAviso(null);
+        confirmadoRef.current = false;
+    }, [formData, modo, justificativa, periodo, dataFim, repetirSemanas]);
+
+    const inicio = formData.data_evento || '';
+
+    const escolherJustificativa = (j: Justificativa) => {
+        setJustificativa(j);
+        if (j === 'festival') {
+            // Festival só existe para mais de um dia
+            setPeriodo('intervalo');
+            if (!dataFim || dataFim <= inicio) setDataFim(addDays(inicio, 1));
+        }
+    };
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
@@ -77,57 +131,42 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSa
         setFormData(prev => ({
             ...prev,
             valor: value === '' ? undefined : parseFloat(value)
-        }))
-    }
+        }));
+    };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        const { data_evento, horario_inicio, horario_fim } = formData;
-    
-        // Conflict Check Logic
-        if (horario_inicio && horario_fim && data_evento) {
-            const timeToMinutes = (timeStr: string): number => {
-                const [h, m] = timeStr.split(':').map(Number);
-                return h * 60 + m;
-            };
+    // Mostra um alerta que exige confirmação; retorna true se a submissão deve parar
+    const precisaConfirmar = (mensagem: string): boolean => {
+        if (confirmadoRef.current) return false;
+        setAviso(mensagem);
+        return true;
+    };
 
-            const newStartTime = timeToMinutes(horario_inicio);
-            let newEndTime = timeToMinutes(horario_fim);
-            // If end time is same or earlier than start, it crosses midnight.
-            if (newEndTime <= newStartTime) {
-                newEndTime += 24 * 60;
-            }
+    const listaFreelas = (lista: Freela[]) => {
+        const nomes = lista.slice(0, 3).map(f => `"${f.descricao}" (${formatShortBR(f.data_evento)})`).join(', ');
+        return lista.length > 3 ? `${nomes} e mais ${lista.length - 3}` : nomes;
+    };
 
-            const conflictingFreela = allFreelas.find(existingFreela => {
-                // Don't compare with itself when editing
-                if (freelaToEdit && existingFreela.id === freelaToEdit.id) return false;
-                
-                // Check if on the same day and has time range
-                if (existingFreela.data_evento !== data_evento) return false;
-                if (!existingFreela.horario_inicio || !existingFreela.horario_fim) return false;
+    // "Já existe 1 freela ... Ele será mantido" / "Já existem 2 freelas ... Eles serão mantidos"
+    const resumoExistentes = (lista: Freela[]) => {
+        const plural = lista.length > 1;
+        return {
+            texto: `Já existe${plural ? 'm' : ''} ${lista.length} freela${plural ? 's' : ''} neste período: ${listaFreelas(lista)}.`,
+            mantido: plural ? 'Eles serão mantidos' : 'Ele será mantido',
+        };
+    };
 
-                const existingStartTime = timeToMinutes(existingFreela.horario_inicio);
-                let existingEndTime = timeToMinutes(existingFreela.horario_fim);
-                if (existingEndTime <= existingStartTime) {
-                    existingEndTime += 24 * 60;
-                }
+    // No celular o alerta aparece no fim do formulário: garante que fique visível
+    const mensagemRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (erro || aviso) mensagemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, [erro, aviso]);
 
-                // Standard overlap check: (StartA < EndB) and (StartB < EndA)
-                return newStartTime < existingEndTime && existingStartTime < newEndTime;
-            });
-            
-            if (conflictingFreela) {
-                onConflict(conflictingFreela, formData);
-                return; // Stop submission
-            }
-        }
-        
+    const montarFreela = (extra: Partial<Freela>): Freela => {
         const now = new Date().toISOString();
-        const freelaData: Freela = {
+        return {
             descricao: formData.descricao || '',
             valor: formData.valor || 0,
-            data_evento: formData.data_evento || '',
+            data_evento: inicio,
             ...formData,
             id: isEditing ? freelaToEdit!.id : `freela_${Date.now()}`,
             status: isEditing ? (freelaToEdit!.status as string) : 'pendente',
@@ -139,167 +178,431 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({ isOpen, onClose, onSa
             categoria: formData.categoria || Categoria.Outro,
             categoria_customizada: formData.categoria === 'outro' ? formData.categoria_customizada : null,
             declara_mei: formData.declara_mei || false,
+            data_fim: null,
+            ...extra,
         };
+    };
 
-        // Recorrência semanal: cria cópias nas semanas seguintes (só em cadastro novo)
-        if (!isEditing && repetirSemanas > 0) {
-            const ocorrencias: Freela[] = [];
-            for (let i = 0; i <= repetirSemanas; i++) {
-                const dias = i * 7;
-                ocorrencias.push({
-                    ...freelaData,
-                    id: `freela_${Date.now()}_${i}`,
-                    data_evento: shiftDate(freelaData.data_evento, dias),
-                    data_vencimento: freelaData.data_vencimento ? shiftDate(freelaData.data_vencimento, dias) : null,
-                });
-            }
-            onSaveMany(ocorrencias);
+    // ---- Bloqueio simples (Férias / Outros) ----
+    const submitBloqueio = () => {
+        const fim = periodo === 'intervalo' ? dataFim : inicio;
+        if (!fim || fim < inicio) {
+            setErro('A data de término deve ser igual ou posterior à data de início.');
+            return;
+        }
+        if (daysBetween(inicio, fim) > MAX_DIAS) {
+            setErro('O bloqueio pode ter no máximo 1 ano.');
+            return;
+        }
+        const dias = eachDate(inicio, fim);
+        const jaBloqueado = dias.map(d => findBloqueio(bloqueios, d)).find(Boolean);
+        if (jaBloqueado) {
+            setErro(`Parte deste período já está bloqueada (${rotuloBloqueio(jaBloqueado)}: ${formatDateBR(jaBloqueado.data_inicio)} a ${formatDateBR(jaBloqueado.data_fim)}).`);
+            return;
+        }
+        const ocupados = allFreelas.filter(f => dias.some(d => freelaCobre(f, d)));
+        if (ocupados.length > 0) {
+            const { texto, mantido } = resumoExistentes(ocupados);
+            if (precisaConfirmar(`${texto} ${mantido}, mas a data ficará bloqueada para novos freelas. Deseja bloquear mesmo assim?`)) return;
+        }
+
+        onSaveBloqueio({
+            id: `bloqueio_${Date.now()}`,
+            tipo: justificativa as TipoBloqueio,
+            data_inicio: inicio,
+            data_fim: fim,
+            motivo: justificativa === 'outros' ? (motivo.trim() || null) : null,
+            created_at: new Date().toISOString(),
+        });
+    };
+
+    // ---- Festival / cachê único ----
+    const submitFestival = () => {
+        if (!dataFim || dataFim <= inicio) {
+            setErro('Festival ou cachê único precisa de mais de um dia: a data de término deve ser posterior à de início.');
+            return;
+        }
+        if (daysBetween(inicio, dataFim) > MAX_DIAS) {
+            setErro('O período pode ter no máximo 1 ano.');
+            return;
+        }
+        const dias = eachDate(inicio, dataFim);
+        const diaBloqueado = dias.find(d => findBloqueio(bloqueios, d));
+        if (diaBloqueado) {
+            const b = findBloqueio(bloqueios, diaBloqueado)!;
+            setErro(`O período inclui uma data bloqueada (${rotuloBloqueio(b)} em ${formatDateBR(diaBloqueado)}). Desbloqueie antes de cadastrar o festival.`);
+            return;
+        }
+        const outros = allFreelas.filter(f => f.id !== editingId && dias.some(d => freelaCobre(f, d)));
+        if (outros.length > 0) {
+            const { texto, mantido } = resumoExistentes(outros);
+            if (precisaConfirmar(`${texto} ${mantido} e ${outros.length > 1 ? 'essas datas aparecerão' : 'a data aparecerá'} como alterada${outros.length > 1 ? 's' : ''} no calendário. Deseja continuar?`)) return;
+        }
+
+        onSave(montarFreela({ data_fim: dataFim }));
+    };
+
+    // ---- Freela de um dia (com recorrência opcional) ----
+    const submitFreela = () => {
+        const mesmaData = isEditing && freelaToEdit!.data_evento === inicio;
+
+        // Datas bloqueadas (férias/outros) não aceitam freela
+        const bloqueioBase = findBloqueio(bloqueios, inicio);
+        if (bloqueioBase && !mesmaData) {
+            setErro(`${formatDateBR(inicio)} está bloqueado (${rotuloBloqueio(bloqueioBase)}). Toque na data no calendário para desbloquear antes de cadastrar um freela.`);
             return;
         }
 
-        onSave(freelaData);
+        const ocorrencias = (!isEditing && repetirSemanas > 0)
+            ? Array.from({ length: repetirSemanas }, (_, i) => addDays(inicio, (i + 1) * 7))
+            : [];
+        const puladas = ocorrencias.filter(d => findBloqueio(bloqueios, d));
+        const datas = [inicio, ...ocorrencias.filter(d => !findBloqueio(bloqueios, d))];
+
+        // Freela adicional dentro de um festival: alerta antes de cadastrar
+        if (!mesmaData) {
+            const emFestival = datas
+                .map(d => ({ d, f: findFestival(allFreelas, d, editingId) }))
+                .filter((x): x is { d: string; f: Freela } => !!x.f);
+            if (emFestival.length > 0) {
+                const f = emFestival[0].f;
+                const datasTexto = emFestival.map(x => formatShortBR(x.d)).join(', ');
+                if (precisaConfirmar(
+                    `${datasTexto} ${emFestival.length > 1 ? 'estão' : 'está'} dentro do período do festival "${f.descricao}" (${periodoFreelaTexto(f)}). ` +
+                    'Deseja cadastrar este freela adicional mesmo assim? A data ficará marcada como alterada no calendário.'
+                )) return;
+            }
+        }
+
+        // Conflito de horário no mesmo dia (freelas de um dia só)
+        const { horario_inicio, horario_fim } = formData;
+        if (horario_inicio && horario_fim && inicio) {
+            const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+            const ini = toMin(horario_inicio);
+            let fim = toMin(horario_fim);
+            if (fim <= ini) fim += 24 * 60;
+
+            const conflitante = allFreelas.find(ex => {
+                if (ex.id === editingId || isMultiDay(ex)) return false;
+                if (ex.data_evento !== inicio || !ex.horario_inicio || !ex.horario_fim) return false;
+                const exIni = toMin(ex.horario_inicio);
+                let exFim = toMin(ex.horario_fim);
+                if (exFim <= exIni) exFim += 24 * 60;
+                return ini < exFim && exIni < fim;
+            });
+            if (conflitante) {
+                onConflict(conflitante, formData);
+                return;
+            }
+        }
+
+        const base = montarFreela({});
+
+        if (ocorrencias.length > 0) {
+            const lote = datas.map((d, i) => {
+                const deslocamento = daysBetween(inicio, d);
+                return {
+                    ...base,
+                    id: `freela_${Date.now()}_${i}`,
+                    data_evento: d,
+                    data_vencimento: base.data_vencimento ? addDays(base.data_vencimento, deslocamento) : null,
+                };
+            });
+            onSaveMany(lote, puladas);
+            return;
+        }
+
+        onSave(base);
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setErro(null);
+        if (!inicio) {
+            setErro('Informe a data.');
+            return;
+        }
+        if (modo === 'bloqueio' && justificativa !== 'festival') return submitBloqueio();
+        if (festivalMode) return submitFestival();
+        return submitFreela();
+    };
+
+    const confirmarAviso = () => {
+        confirmadoRef.current = true;
+        formRef.current?.requestSubmit();
     };
 
     const cargaHoraria = useMemo(() => {
         const { horario_inicio, horario_fim } = formData;
         if (!horario_inicio || !horario_fim) return null;
+        const [sh, sm] = horario_inicio.split(':').map(Number);
+        const [eh, em] = horario_fim.split(':').map(Number);
+        let start = sh * 60 + sm;
+        let end = eh * 60 + em;
+        if (end < start) end += 24 * 60; // atravessa a meia-noite
+        const duracao = end - start;
+        if (isNaN(duracao) || duracao <= 0) return null;
+        const h = Math.floor(duracao / 60);
+        const m = duracao % 60;
+        return `Carga horária${festivalMode ? ' diária' : ''}: ${h > 0 ? `${h}h ` : ''}${m > 0 ? `${m}m` : ''}`.trim();
+    }, [formData.horario_inicio, formData.horario_fim, festivalMode]);
 
-        try {
-            const [startHour, startMinute] = horario_inicio.split(':').map(Number);
-            const [endHour, endMinute] = horario_fim.split(':').map(Number);
+    const diasPeriodo = (modo === 'bloqueio' || festivalMode) && dataFim && dataFim >= inicio
+        ? daysBetween(inicio, dataFim) + 1
+        : 1;
 
-            let startTotalMinutes = startHour * 60 + startMinute;
-            let endTotalMinutes = endHour * 60 + endMinute;
+    const titulo = modo === 'bloqueio'
+        ? 'Bloquear Data'
+        : isEditing ? (festivalMode ? 'Editar Festival' : 'Editar Freela')
+        : isDuplicating ? 'Duplicar Freela' : 'Novo Freela';
 
-            if (endTotalMinutes < startTotalMinutes) {
-                // Job crosses midnight
-                endTotalMinutes += 24 * 60;
-            }
+    const textoBotao = festivalMode
+        ? 'Salvar Festival'
+        : modo === 'bloqueio'
+            ? (periodo === 'intervalo' && diasPeriodo > 1 ? `Bloquear ${diasPeriodo} dias` : 'Bloquear data')
+            : 'Salvar Freela';
 
-            const durationMinutes = endTotalMinutes - startTotalMinutes;
-            if (isNaN(durationMinutes) || durationMinutes <= 0) return null;
-
-            const hours = Math.floor(durationMinutes / 60);
-            const minutes = durationMinutes % 60;
-
-            let result = 'Carga horária: ';
-            if (hours > 0) result += `${hours}h `;
-            if (minutes > 0) result += `${minutes}m`;
-            
-            return result.trim();
-        } catch (error) {
-            console.error("Error calculating duration:", error);
-            return null;
-        }
-    }, [formData.horario_inicio, formData.horario_fim]);
-
+    const req = festivalMode; // no festival, todos os campos são obrigatórios (exceto observações)
+    const ast = req ? ' *' : '';
 
     return (
-        <BaseModal isOpen={isOpen} onClose={onClose} title={isEditing ? 'Editar Freela' : isDuplicating ? 'Duplicar Freela' : 'Novo Freela'} titleIcon="📝">
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                 <div>
-                    <label htmlFor="descricao" className="block text-sm font-medium text-gray-700 mb-1">Descrição *</label>
-                    <input type="text" id="descricao" name="descricao" value={formData.descricao || ''} onChange={handleChange} maxLength={100} required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: Show no Bar do João" />
-                </div>
-                 <div>
-                    <label htmlFor="valor" className="block text-sm font-medium text-gray-700 mb-1">Valor (R$) *</label>
-                    <input type="number" id="valor" name="valor" value={formData.valor || ''} onChange={handleValorChange} step="0.01" min="0.01" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0,00" />
-                </div>
-                 <div>
-                    <label htmlFor="dataEvento" className="block text-sm font-medium text-gray-700 mb-1">Data do Evento *</label>
-                    <input type="date" id="dataEvento" name="data_evento" value={formData.data_evento || ''} onChange={handleChange} required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                </div>
-                 <div className="grid grid-cols-2 gap-3">
-                     <div>
-                        <label htmlFor="horarioInicio" className="block text-sm font-medium text-gray-700 mb-1">Horário Início</label>
-                        <input type="time" id="horarioInicio" name="horario_inicio" value={formData.horario_inicio || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                    </div>
-                     <div>
-                        <label htmlFor="horarioFim" className="block text-sm font-medium text-gray-700 mb-1">Horário Fim</label>
-                        <input type="time" id="horarioFim" name="horario_fim" value={formData.horario_fim || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                    </div>
-                </div>
-                {cargaHoraria && (
-                    <div className="text-center text-sm font-medium text-gray-700 bg-gray-100 p-2 rounded-lg -mt-2 border border-gray-200">
-                        {cargaHoraria}
-                    </div>
-                )}
-                <div>
-                    <label htmlFor="dataVencimento" className="block text-sm font-medium text-gray-700 mb-1">Data de Vencimento</label>
-                    <input type="date" id="dataVencimento" name="data_vencimento" value={formData.data_vencimento || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                </div>
-                <div>
-                    <label htmlFor="tipoServico" className="block text-sm font-medium text-gray-700 mb-1">Tipo de Serviço</label>
-                    <select id="tipoServico" name="tipo_servico" value={formData.tipo_servico || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        {Object.values(TipoServico).map(v => <option key={v} value={v}>{v.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="categoria" className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-                    <select id="categoria" name="categoria" value={formData.categoria || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                       {Object.values(Categoria).map(v => <option key={v} value={v}>{v.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>)}
-                    </select>
-                </div>
-                {formData.categoria === 'outro' && (
-                    <div>
-                        <label htmlFor="categoria_customizada" className="block text-sm font-medium text-gray-700 mb-1">Especifique a Categoria *</label>
-                        <input
-                            type="text"
-                            id="categoria_customizada"
-                            name="categoria_customizada"
-                            value={formData.categoria_customizada || ''}
-                            onChange={handleChange}
-                            required
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Ex: Roadie"
-                        />
-                    </div>
-                )}
-                <div>
-                    <label htmlFor="local" className="block text-sm font-medium text-gray-700 mb-1">Local</label>
-                    <input type="text" id="local" name="local" list="locais-sugeridos" value={formData.local || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: Teatro Municipal"/>
-                    <datalist id="locais-sugeridos">
-                        {locais.map(l => <option key={l} value={l} />)}
-                    </datalist>
-                </div>
-                <div>
-                    <label htmlFor="contratante" className="block text-sm font-medium text-gray-700 mb-1">Contratante</label>
-                    <input type="text" id="contratante" name="contratante" list="contratantes-sugeridos" value={formData.contratante || ''} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: João Silva"/>
-                    <datalist id="contratantes-sugeridos">
-                        {contratantes.map(c => <option key={c} value={c} />)}
-                    </datalist>
-                </div>
-                <div>
-                    <label htmlFor="observacoes" className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
-                    <textarea id="observacoes" name="observacoes" value={formData.observacoes || ''} onChange={handleChange} rows={3} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Informações adicionais..."></textarea>
-                </div>
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" id="declaraMei" name="declara_mei" checked={formData.declara_mei || false} onChange={handleChange} className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"/>
-                        <div>
-                            <div className="font-semibold text-gray-900">Declarar como MEI</div>
-                            <div className="text-xs text-gray-600">Este freela será contabilizado no limite mensal MEI.</div>
-                        </div>
-                    </label>
-                </div>
-                {!isEditing && (
-                    <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
-                        <label htmlFor="repetirSemanas" className="block font-semibold text-gray-900 mb-1">🔁 Repetir semanalmente</label>
-                        <select
-                            id="repetirSemanas"
-                            value={repetirSemanas}
-                            onChange={(e) => setRepetirSemanas(parseInt(e.target.value))}
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        <BaseModal isOpen={isOpen} onClose={onClose} title={titulo} titleIcon={modo === 'bloqueio' ? '🚫' : '📝'}>
+            <form ref={formRef} onSubmit={handleSubmit} className="p-6 space-y-4">
+
+                {isNovo && (
+                    <div className="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl">
+                        <button
+                            type="button"
+                            onClick={() => setModo('freela')}
+                            className={`py-2 rounded-lg text-sm font-bold transition-colors ${modo === 'freela' ? 'bg-blue-600 text-white shadow' : 'text-gray-600'}`}
                         >
-                            <option value={0}>Não repetir</option>
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(n => (
-                                <option key={n} value={n}>+{n} semana{n > 1 ? 's' : ''} ({n + 1} freelas no total)</option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-gray-600 mt-1">Cria cópias deste freela nas próximas semanas, no mesmo dia e horário.</p>
+                            📝 Freela
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setModo('bloqueio')}
+                            className={`py-2 rounded-lg text-sm font-bold transition-colors ${modo === 'bloqueio' ? 'bg-gray-700 text-white shadow' : 'text-gray-600'}`}
+                        >
+                            🚫 Bloquear data
+                        </button>
                     </div>
                 )}
-                <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium">Salvar Freela</button>
+
+                {modo === 'bloqueio' && (
+                    <div>
+                        <span className={labelClass}>Justificativa *</span>
+                        <div className="grid grid-cols-3 gap-2">
+                            {JUSTIFICATIVAS.map(j => (
+                                <button
+                                    key={j.id}
+                                    type="button"
+                                    onClick={() => escolherJustificativa(j.id)}
+                                    className={`p-2 rounded-xl border-2 text-center transition-colors ${justificativa === j.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}
+                                >
+                                    <div className="text-2xl">{j.icon}</div>
+                                    <div className="text-xs font-bold text-gray-900 leading-tight mt-1">{j.titulo}</div>
+                                    <div className="text-[10px] text-gray-500 leading-tight mt-0.5">{j.desc}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {modo === 'bloqueio' && !festivalMode && (
+                    <>
+                        <div>
+                            <label htmlFor="dataInicioBloqueio" className={labelClass}>Data de início *</label>
+                            <input type="date" id="dataInicioBloqueio" name="data_evento" value={inicio} onChange={handleChange} required className={inputClass} />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input type="radio" name="periodo" checked={periodo === 'dia'} onChange={() => setPeriodo('dia')} className="w-5 h-5" />
+                                <span className="text-sm font-medium text-gray-800">Bloquear apenas este dia</span>
+                            </label>
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="periodo"
+                                    checked={periodo === 'intervalo'}
+                                    onChange={() => { setPeriodo('intervalo'); if (!dataFim || dataFim < inicio) setDataFim(addDays(inicio, 1)); }}
+                                    className="w-5 h-5"
+                                />
+                                <span className="text-sm font-medium text-gray-800">Bloquear até uma data</span>
+                            </label>
+                            {periodo === 'intervalo' && (
+                                <div>
+                                    <label htmlFor="dataFimBloqueio" className={labelClass}>Data de término *</label>
+                                    <input type="date" id="dataFimBloqueio" value={dataFim} min={inicio} onChange={(e) => setDataFim(e.target.value)} required className={inputClass} />
+                                    {diasPeriodo > 1 && <p className="text-xs text-gray-600 mt-1">{diasPeriodo} dias bloqueados</p>}
+                                </div>
+                            )}
+                        </div>
+                        {justificativa === 'outros' && (
+                            <div>
+                                <label htmlFor="motivoBloqueio" className={labelClass}>Motivo (opcional)</label>
+                                <input
+                                    type="text"
+                                    id="motivoBloqueio"
+                                    list="motivos-sugeridos"
+                                    value={motivo}
+                                    onChange={(e) => setMotivo(e.target.value)}
+                                    maxLength={60}
+                                    className={inputClass}
+                                    placeholder="Ex: doença, compromisso pessoal"
+                                />
+                                <datalist id="motivos-sugeridos">
+                                    <option value="Doença" />
+                                    <option value="Indisponível" />
+                                    <option value="Compromisso pessoal" />
+                                    <option value="Viagem" />
+                                </datalist>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {mostraCamposFreela && (
+                    <>
+                        {festivalMode && (
+                            <div className="bg-violet-50 border-2 border-violet-200 rounded-lg p-3 text-xs text-gray-700">
+                                🎪 Todos os campos são obrigatórios. O <strong>cachê é único</strong> para todo o período e as datas ficam bloqueadas no calendário.
+                            </div>
+                        )}
+                        <div>
+                            <label htmlFor="descricao" className={labelClass}>{festivalMode ? 'Nome do festival *' : 'Descrição *'}</label>
+                            <input type="text" id="descricao" name="descricao" value={formData.descricao || ''} onChange={handleChange} maxLength={100} required className={inputClass} placeholder={festivalMode ? 'Ex: Rock in Rio' : 'Ex: Show no Bar do João'} />
+                        </div>
+                        <div>
+                            <label htmlFor="valor" className={labelClass}>{festivalMode ? 'Cachê único do período (R$) *' : 'Valor (R$) *'}</label>
+                            <input type="number" id="valor" name="valor" value={formData.valor || ''} onChange={handleValorChange} step="0.01" min="0.01" required className={inputClass} placeholder="0,00" />
+                        </div>
+                        {festivalMode ? (
+                            <div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label htmlFor="dataEvento" className={labelClass}>Data de início *</label>
+                                        <input type="date" id="dataEvento" name="data_evento" value={inicio} onChange={handleChange} required className={inputClass} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="dataFimFestival" className={labelClass}>Data de término *</label>
+                                        <input type="date" id="dataFimFestival" value={dataFim} min={inicio ? addDays(inicio, 1) : undefined} onChange={(e) => setDataFim(e.target.value)} required className={inputClass} />
+                                    </div>
+                                </div>
+                                {diasPeriodo > 1 && <p className="text-xs text-gray-600 mt-1">{diasPeriodo} dias de festival</p>}
+                            </div>
+                        ) : (
+                            <div>
+                                <label htmlFor="dataEvento" className={labelClass}>Data do Evento *</label>
+                                <input type="date" id="dataEvento" name="data_evento" value={inicio} onChange={handleChange} required className={inputClass} />
+                            </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label htmlFor="horarioInicio" className={labelClass}>Horário Início{ast}</label>
+                                <input type="time" id="horarioInicio" name="horario_inicio" value={formData.horario_inicio || ''} onChange={handleChange} required={req} className={inputClass} />
+                            </div>
+                            <div>
+                                <label htmlFor="horarioFim" className={labelClass}>Horário Fim{ast}</label>
+                                <input type="time" id="horarioFim" name="horario_fim" value={formData.horario_fim || ''} onChange={handleChange} required={req} className={inputClass} />
+                            </div>
+                        </div>
+                        {cargaHoraria && (
+                            <div className="text-center text-sm font-medium text-gray-700 bg-gray-100 p-2 rounded-lg -mt-2 border border-gray-200">
+                                {cargaHoraria}
+                            </div>
+                        )}
+                        <div>
+                            <label htmlFor="dataVencimento" className={labelClass}>Data de Vencimento{ast}</label>
+                            <input type="date" id="dataVencimento" name="data_vencimento" value={formData.data_vencimento || ''} onChange={handleChange} required={req} className={inputClass} />
+                        </div>
+                        <div>
+                            <label htmlFor="tipoServico" className={labelClass}>Tipo de Serviço{ast}</label>
+                            <select id="tipoServico" name="tipo_servico" value={formData.tipo_servico || ''} onChange={handleChange} required={req} className={inputClass}>
+                                {Object.values(TipoServico).map(v => <option key={v} value={v}>{v.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label htmlFor="categoria" className={labelClass}>Categoria{ast}</label>
+                            <select id="categoria" name="categoria" value={formData.categoria || ''} onChange={handleChange} required={req} className={inputClass}>
+                                {Object.values(Categoria).map(v => <option key={v} value={v}>{v.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>)}
+                            </select>
+                        </div>
+                        {formData.categoria === 'outro' && (
+                            <div>
+                                <label htmlFor="categoria_customizada" className={labelClass}>Especifique a Categoria *</label>
+                                <input type="text" id="categoria_customizada" name="categoria_customizada" value={formData.categoria_customizada || ''} onChange={handleChange} required className={inputClass} placeholder="Ex: Roadie" />
+                            </div>
+                        )}
+                        <div>
+                            <label htmlFor="local" className={labelClass}>Local{ast}</label>
+                            <input type="text" id="local" name="local" list="locais-sugeridos" value={formData.local || ''} onChange={handleChange} required={req} className={inputClass} placeholder="Ex: Teatro Municipal" />
+                            <datalist id="locais-sugeridos">
+                                {locais.map(l => <option key={l} value={l} />)}
+                            </datalist>
+                        </div>
+                        <div>
+                            <label htmlFor="contratante" className={labelClass}>Contratante{ast}</label>
+                            <input type="text" id="contratante" name="contratante" list="contratantes-sugeridos" value={formData.contratante || ''} onChange={handleChange} required={req} className={inputClass} placeholder="Ex: João Silva" />
+                            <datalist id="contratantes-sugeridos">
+                                {contratantes.map(c => <option key={c} value={c} />)}
+                            </datalist>
+                        </div>
+                        <div>
+                            <label htmlFor="observacoes" className={labelClass}>Observações</label>
+                            <textarea id="observacoes" name="observacoes" value={formData.observacoes || ''} onChange={handleChange} rows={3} className={inputClass} placeholder="Informações adicionais..."></textarea>
+                        </div>
+                        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" id="declaraMei" name="declara_mei" checked={formData.declara_mei || false} onChange={handleChange} className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+                                <div>
+                                    <div className="font-semibold text-gray-900">Declarar como MEI</div>
+                                    <div className="text-xs text-gray-600">Este freela será contabilizado no limite mensal MEI.</div>
+                                </div>
+                            </label>
+                        </div>
+                        {!isEditing && !festivalMode && (
+                            <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
+                                <label htmlFor="repetirSemanas" className="block font-semibold text-gray-900 mb-1">🔁 Repetir semanalmente</label>
+                                <select
+                                    id="repetirSemanas"
+                                    value={repetirSemanas}
+                                    onChange={(e) => setRepetirSemanas(parseInt(e.target.value))}
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                >
+                                    <option value={0}>Não repetir</option>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(n => (
+                                        <option key={n} value={n}>+{n} semana{n > 1 ? 's' : ''} ({n + 1} freelas no total)</option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-gray-600 mt-1">Cria cópias nas próximas semanas, no mesmo dia e horário. Semanas em datas bloqueadas são puladas.</p>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                <div ref={mensagemRef} className="space-y-4 empty:hidden">
+                {erro && (
+                    <div className="bg-red-50 border-2 border-red-300 text-red-800 rounded-lg p-3 text-sm font-medium" role="alert">
+                        🚫 {erro}
+                    </div>
+                )}
+
+                {aviso && (
+                    <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3 space-y-3" role="alert">
+                        <p className="text-sm text-amber-900 font-medium">⚠️ {aviso}</p>
+                        <button type="button" onClick={confirmarAviso} className="w-full bg-amber-500 text-white py-2.5 rounded-lg hover:bg-amber-600 transition-colors font-semibold">
+                            Continuar mesmo assim
+                        </button>
+                    </div>
+                )}
+                </div>
+
+                <button
+                    type="submit"
+                    className={`w-full text-white py-3 rounded-lg transition-colors font-medium ${modo === 'bloqueio' && !festivalMode ? 'bg-gray-700 hover:bg-gray-800' : festivalMode ? 'bg-violet-600 hover:bg-violet-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                >
+                    {textoBotao}
+                </button>
             </form>
         </BaseModal>
     );

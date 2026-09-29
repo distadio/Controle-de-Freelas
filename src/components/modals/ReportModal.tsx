@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Freela, Categoria, TipoServico } from '../../types';
 import BaseModal from './BaseModal';
 import { normalizeName, nameKey } from '../../services/textService';
+import { periodoFreelaTexto } from '../../services/bloqueioService';
 
 interface ReportModalProps {
     isOpen: boolean;
@@ -164,7 +165,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
         const rows: string[][] = [
             ['Data', 'Descrição', 'Categoria', 'Tipo de Serviço', 'Contratante', 'Local', 'Status', 'MEI', 'Valor (R$)'],
             ...filteredFreelas.map(f => [
-                new Date(f.data_evento + 'T00:00:00').toLocaleDateString('pt-BR'),
+                periodoFreelaTexto(f),
                 esc(f.descricao),
                 esc(getCategoriaDisplay(f).label),
                 esc(f.tipo_servico.replace(/_/g, ' ')),
@@ -199,7 +200,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
         const statusLabel: Record<string, string> = { pago: 'Pago', pendente: 'Pendente', atrasada: 'Atrasado' };
         const rowsHtml = filteredFreelas.map(f => `
             <tr>
-                <td>${new Date(f.data_evento + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                <td>${periodoFreelaTexto(f)}</td>
                 <td>${f.descricao}</td>
                 <td>${getCategoriaDisplay(f).label}</td>
                 <td>${f.contratante || '-'}</td>
@@ -463,7 +464,6 @@ const ReportFreelaCard: React.FC<{ freela: Freela }> = ({ freela }) => {
         atrasada: { border: 'border-l-red-500', badge: 'bg-red-100 text-red-800', text: 'Atrasado' }
     };
     const info = statusInfo[freela.status] || statusInfo.pendente;
-    const date = new Date(freela.data_evento + 'T00:00:00');
 
     return (
         <div className={`bg-white rounded-lg p-3 shadow-sm border border-gray-100 border-l-4 ${info.border} flex items-start justify-between gap-3`}>
@@ -471,7 +471,7 @@ const ReportFreelaCard: React.FC<{ freela: Freela }> = ({ freela }) => {
                 <p className="font-semibold text-gray-800 truncate text-sm" title={freela.descricao}>{freela.descricao}</p>
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
                     <span className={`px-2 py-0.5 font-semibold rounded-full capitalize ${info.badge}`}>{info.text}</span>
-                    <span className="text-gray-500">{date.toLocaleDateString('pt-BR')}</span>
+                    <span className="text-gray-500">{periodoFreelaTexto(freela)}</span>
                     {freela.contratante && <span className="text-gray-500 truncate max-w-[110px]">• {freela.contratante}</span>}
                 </div>
             </div>

@@ -38,6 +38,7 @@ export interface Freela {
     descricao: string;
     valor: number;
     data_evento: string; // YYYY-MM-DD
+    data_fim?: string | null; // YYYY-MM-DD — só em festival/cachê único (período de vários dias)
     horario_inicio?: string | null; // HH:MM
     horario_fim?: string | null; // HH:MM
     data_vencimento?: string | null; // YYYY-MM-DD
@@ -56,10 +57,24 @@ export interface Freela {
     conflictWith?: string; // ID of the conflicting freela
 }
 
+// Bloqueio de agenda sem cachê (férias, doença, compromisso pessoal...).
+// Festival/cachê único não é um Bloqueio: é um Freela com data_fim.
+export type TipoBloqueio = 'ferias' | 'outros';
+
+export interface Bloqueio {
+    id: string;
+    tipo: TipoBloqueio;
+    data_inicio: string; // YYYY-MM-DD
+    data_fim: string; // YYYY-MM-DD (igual a data_inicio quando é um dia só)
+    motivo?: string | null;
+    created_at: string;
+}
+
 export interface Backup {
     id: number;
     timestamp: string;
     data: Freela[];
+    bloqueios?: Bloqueio[];
     count: number;
 }
 

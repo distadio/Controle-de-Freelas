@@ -1,12 +1,20 @@
 import React from 'react';
-import { Freela } from '../types';
+import { Freela, Bloqueio } from '../types';
 import { getHoliday } from '../services/dateService';
+import { findBloqueio, findFestival, isMultiDay, rotuloBloqueio, iconeBloqueio } from '../services/bloqueioService';
 
 interface CalendarProps {
     currentDate: Date;
     freelas: Freela[];
+    bloqueios: Bloqueio[];
     onDayClick: (date: string) => void;
 }
+
+const statusDot: Record<string, string> = {
+    pago: 'bg-green-400',
+    pendente: 'bg-yellow-300',
+    atrasada: 'bg-red-500',
+};
 
 const CategoriaIcons: Record<string, string> = {
     'som': '🔊', 'iluminacao': '💡', 'video': '📹', 'producao': '🎬', 
@@ -15,7 +23,7 @@ const CategoriaIcons: Record<string, string> = {
     'mixagem_masterizacao': '🎚️', 'outro': '⚙️'
 };
 
-const Calendar: React.FC<CalendarProps> = ({ currentDate, freelas, onDayClick }) => {
+const Calendar: React.FC<CalendarProps> = ({ currentDate, freelas, bloqueios, onDayClick }) => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
@@ -27,7 +35,9 @@ const Calendar: React.FC<CalendarProps> = ({ currentDate, freelas, onDayClick })
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Freelas de um dia só, agrupados por data (festivais são tratados à parte, pelo período)
     const freelasByDate: { [key: string]: Freela[] } = freelas.reduce((acc, freela) => {
+        if (isMultiDay(freela)) return acc;
         (acc[freela.data_evento] = acc[freela.data_evento] || []).push(freela);
         return acc;
     }, {} as { [key: string]: Freela[] });
@@ -53,32 +63,61 @@ const Calendar: React.FC<CalendarProps> = ({ currentDate, freelas, onDayClick })
         const isCurrentDay = date.getTime() === today.getTime();
         const statusClass = getDateStatus(dateString);
         const dailyFreelas = freelasByDate[dateString] || [];
+        const bloqueio = findBloqueio(bloqueios, dateString);
+        const festival = bloqueio ? undefined : findFestival(freelas, dateString);
+        // Festival com freela adicional no mesmo dia = data alterada
+        const alterada = !!festival && dailyFreelas.length > 0;
 
         let cellClasses = `aspect-square flex flex-col items-center justify-center rounded-lg cursor-pointer transition-all duration-200 font-semibold relative p-1 text-xs sm:text-base`;
-        if (statusClass) {
+        let titulo: string | undefined;
+        if (bloqueio) {
+            cellClasses += ` bg-gray-300 text-gray-500 opacity-60 hover:opacity-80`;
+            titulo = `${rotuloBloqueio(bloqueio)} — toque para desbloquear`;
+        } else if (festival) {
+            cellClasses += alterada
+                ? ` bg-gradient-to-br from-violet-600 to-orange-500 text-white ring-2 ring-orange-400`
+                : ` bg-violet-600 text-white`;
+            titulo = alterada
+                ? `${festival.descricao} + ${dailyFreelas.length} freela(s) adicional(is)`
+                : festival.descricao;
+        } else if (statusClass) {
             cellClasses += ` ${statusClass}`;
         } else {
             cellClasses += ` bg-gray-100 hover:bg-gray-200 text-gray-700`;
         }
 
-        if (isCurrentDay) {
+        if (isCurrentDay && !alterada) {
             cellClasses += ` ring-2 ring-offset-2 ring-blue-500`;
         }
-        
+
+        const rotulo = bloqueio
+            ? `${iconeBloqueio(bloqueio)} ${rotuloBloqueio(bloqueio)}`
+            : festival
+                ? `${alterada ? `+${dailyFreelas.length} ` : '🎪 '}${festival.descricao}`
+                : null;
+
         calendarCells.push(
-            <div 
-                key={day} 
-                className={cellClasses} 
+            <div
+                key={day}
+                className={cellClasses}
                 onClick={() => onDayClick(dateString)}
                 data-holiday-name={holiday?.name}
+                title={titulo}
             >
                 {holiday && (
-                    <span 
+                    <span
                         className={`absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${holiday.type === 'nacional' ? 'bg-orange-500' : 'bg-blue-500'}`}
                     >!</span>
                 )}
+                {festival && (
+                    <span className={`absolute top-1 left-1 w-2 h-2 rounded-full border border-white/70 ${statusDot[festival.status] || statusDot.pendente}`} />
+                )}
                 <span>{day}</span>
-                {dailyFreelas.length > 0 && (
+                {rotulo ? (
+                    <div className="absolute bottom-0.5 left-0.5 right-0.5 text-[7px] sm:text-[9px] leading-none font-bold truncate text-center">
+                        {rotulo}
+                    </div>
+                ) : dailyFreelas.length > 0 && (
                     <div className="absolute bottom-1 left-0 right-0 flex flex-wrap gap-px justify-center items-center max-h-4 overflow-hidden">
                         {dailyFreelas.slice(0, 4).map(f => (
                              <span key={f.id} className="text-[8px] leading-none opacity-90" title={f.descricao}>

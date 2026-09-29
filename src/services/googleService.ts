@@ -1,4 +1,5 @@
-import { Freela, CloudBackupInfo } from '../types';
+import { Freela, CloudBackupInfo, Bloqueio } from '../types';
+import { addDays, isMultiDay } from './bloqueioService';
 
 declare global {
     interface Window {
@@ -145,12 +146,13 @@ const getFileId = async (): Promise<string | null> => {
     }
 };
 
-export const uploadBackup = async (freelas: Freela[]) => {
+export const uploadBackup = async (freelas: Freela[], bloqueios: Bloqueio[] = []) => {
     try {
         const fileId = await getFileId();
-        const fileContent = JSON.stringify({ 
-            data: freelas, 
-            timestamp: new Date().toISOString() 
+        const fileContent = JSON.stringify({
+            data: freelas,
+            bloqueios,
+            timestamp: new Date().toISOString()
         });
         
         const boundary = '-------314159265358979323846';
@@ -189,7 +191,7 @@ export const uploadBackup = async (freelas: Freela[]) => {
     }
 };
 
-export const getCloudBackup = async (): Promise<{ data: Freela[]; timestamp: string } | null> => {
+export const getCloudBackup = async (): Promise<{ data: Freela[]; bloqueios?: Bloqueio[]; timestamp: string } | null> => {
     try {
         const fileId = await getFileId();
         if (!fileId) {
@@ -205,18 +207,17 @@ export const getCloudBackup = async (): Promise<{ data: Freela[]; timestamp: str
         const backupObject = JSON.parse(response.body);
         if (backupObject && backupObject.data) {
             console.log("✅ Backup downloaded successfully");
-            return { data: backupObject.data as Freela[], timestamp: backupObject.timestamp };
+            return {
+                data: backupObject.data as Freela[],
+                bloqueios: Array.isArray(backupObject.bloqueios) ? backupObject.bloqueios as Bloqueio[] : undefined,
+                timestamp: backupObject.timestamp,
+            };
         }
         return null;
     } catch (error) {
         console.error("❌ Error downloading backup:", error);
         return null;
     }
-};
-
-export const downloadBackup = async (): Promise<Freela[] | null> => {
-    const backup = await getCloudBackup();
-    return backup ? backup.data : null;
 };
 
 export const getBackupMetadata = async (): Promise<CloudBackupInfo | null> => {
@@ -275,10 +276,15 @@ export const findOrCreateCalendar = async (): Promise<string | null> => {
 
 export const syncFreelaToCalendar = async (calendarId: string, freela: Freela): Promise<string | null> => {
     try {
+        const multiDay = isMultiDay(freela);
         const isAllDay = !freela.horario_inicio;
         let start, end;
 
-        if (isAllDay) {
+        if (multiDay) {
+            // Festival/cachê único: evento de dia inteiro cobrindo todo o período
+            start = { 'date': freela.data_evento };
+            end = { 'date': addDays(freela.data_fim!, 1) };
+        } else if (isAllDay) {
             const endDate = new Date(freela.data_evento + 'T00:00:00');
             endDate.setDate(endDate.getDate() + 1);
             start = { 'date': freela.data_evento };
@@ -305,7 +311,7 @@ export const syncFreelaToCalendar = async (calendarId: string, freela: Freela): 
         const eventResource = {
             'summary': freela.descricao,
             'location': freela.local || '',
-            'description': `Contratante: ${freela.contratante || 'N/A'}\nTipo: ${freela.tipo_servico.replace(/_/g, ' ')}\nFunção: ${freela.categoria.replace(/_/g, ' ')}\n\nObservações: ${freela.observacoes || ''}\n\nGerado por Controle de Freelas`,
+            'description': `${multiDay ? `Festival / cachê único${freela.horario_inicio ? `\nHorário diário: ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}` : ''}\n` : ''}Contratante: ${freela.contratante || 'N/A'}\nTipo: ${freela.tipo_servico.replace(/_/g, ' ')}\nFunção: ${freela.categoria.replace(/_/g, ' ')}\n\nObservações: ${freela.observacoes || ''}\n\nGerado por Controle de Freelas`,
             'start': start,
             'end': end,
             'reminders': {
