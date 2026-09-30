@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom';
 import { Freela, Categoria, TipoServico } from '../../types';
 import BaseModal from './BaseModal';
 import InvoiceModal from './InvoiceModal';
+import InvoicesTab from '../InvoicesTab';
+import type { InvoiceOps } from '../../services/invoiceService';
 import { normalizeName, nameKey } from '../../services/textService';
 import { periodoFreelaTexto } from '../../services/bloqueioService';
 import { repasseSub } from '../../services/subService';
@@ -12,6 +14,8 @@ interface ReportModalProps {
     onClose: () => void;
     freelas: Freela[];
     currentDate: Date;
+    invoiceOps?: InvoiceOps;
+    abaInicial?: 'relatorio' | 'invoices';
 }
 
 type Scope = 'mes' | 'trimestre' | 'ano' | 'tudo' | 'datas';
@@ -97,7 +101,8 @@ const getCategoriaDisplay = (freela: Freela): { icon: string; label: string } =>
     return CategoriaInfo[freela.categoria] || CategoriaInfo['outro'];
 };
 
-const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, currentDate }) => {
+const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, currentDate, invoiceOps, abaInicial = 'relatorio' }) => {
+    const [aba, setAba] = useState<'relatorio' | 'invoices'>(abaInicial);
     const [scope, setScope] = useState<Scope>('mes');
     const [anchor, setAnchor] = useState<Date>(currentDate);
     const [filters, setFilters] = useState<Filtros>(FILTROS_VAZIOS);
@@ -113,6 +118,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
             setDatas({ de: '', ate: '' });
             setShowFilters(false);
             setShowInvoice(false);
+            setAba(abaInicial);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
@@ -414,6 +420,27 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
     return (
         <BaseModal isOpen={isOpen} onClose={onClose} title="Relatório & Gestão" titleIcon="📊" maxWidth="sm:max-w-xl" applyPhoneAspectRatio={false}>
             <div className="p-4 space-y-4 bg-gray-50">
+                {/* Abas */}
+                {invoiceOps && (
+                    <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl shadow-sm">
+                        <button
+                            onClick={() => setAba('relatorio')}
+                            className={`py-2 rounded-lg text-sm font-bold transition-colors ${aba === 'relatorio' ? 'bg-purple-600 text-white shadow' : 'text-gray-600'}`}
+                        >
+                            📊 Relatório
+                        </button>
+                        <button
+                            onClick={() => setAba('invoices')}
+                            className={`py-2 rounded-lg text-sm font-bold transition-colors ${aba === 'invoices' ? 'bg-purple-600 text-white shadow' : 'text-gray-600'}`}
+                        >
+                            🧾 Invoices{invoiceOps.lista.length > 0 ? ` (${invoiceOps.lista.length})` : ''}
+                        </button>
+                    </div>
+                )}
+
+                {aba === 'invoices' && invoiceOps ? (
+                    <InvoicesTab freelas={freelas} ops={invoiceOps} onIrParaRelatorio={() => setAba('relatorio')} />
+                ) : (<>
 
                 {/* Seletor de período */}
                 <div className="bg-white rounded-xl shadow-sm p-2 space-y-2">
@@ -621,6 +648,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                         </div>
                     )}
                 </div>
+                </>)}
             </div>
             {showInvoice && ReactDOM.createPortal(
                 <InvoiceModal
@@ -629,6 +657,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                     freelas={freelas}
                     contratanteInicial={filters.contratante || contratantes[0]?.name}
                     periodoInicial={getPeriodRange(anchor, scope, datas)}
+                    invoiceOps={invoiceOps}
                 />,
                 document.getElementById('modal-root') || document.body
             )}

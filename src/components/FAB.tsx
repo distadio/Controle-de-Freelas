@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 interface FABProps {
-    onMenuClick: (action: 'freelaForm' | 'backup' | 'dashboard' | 'syncGoogle' | 'about' | 'policies' | 'feedback') => void;
+    onMenuClick: (action: 'freelaForm' | 'backup' | 'dashboard' | 'invoices' | 'syncGoogle' | 'about' | 'policies' | 'feedback') => void;
 }
 
 const menuItems = [
     { id: 'freelaForm', icon: '📝', title: 'Inserir Novo Freela', description: 'Adicione um novo trabalho', action: () => {} },
     { id: 'backup', icon: '💾', title: 'Backup & Restauração', description: 'Gerencie seus backups', action: () => {} },
     { id: 'dashboard', icon: '📊', title: 'Dashboard', description: 'Visualize estatísticas', action: () => {} },
+    { id: 'invoices', icon: '🧾', title: 'Invoices', description: 'Emitidas, pagas e 2ª via', action: () => {} },
     { id: 'syncGoogle', icon: '🔄', title: 'Sincronizar com Google', description: 'Exporte para Google Agenda', action: () => {} },
     { id: 'about', icon: 'ℹ️', title: 'Sobre o Aplicativo', description: 'Versão e direitos autorais', action: () => {} },
     { id: 'policies', icon: '📜', title: 'Políticas de Privacidade e Uso', description: 'Consulte privacidade e termos', action: () => {} },

@@ -1,4 +1,3 @@
-declare const __APP_VERSION__: string;
 
 export enum FreelaStatus {
     Pago = 'pago',
@@ -96,6 +95,7 @@ export interface Backup {
     timestamp: string;
     data: Freela[];
     bloqueios?: Bloqueio[];
+    invoices?: import('./services/invoiceService').InvoiceRegistro[];
     count: number;
 }
 

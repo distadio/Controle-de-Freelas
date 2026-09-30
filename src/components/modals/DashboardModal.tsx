@@ -4,6 +4,7 @@ import { Freela, Bloqueio } from '../../types';
 import BaseModal from './BaseModal';
 import InvoiceModal from './InvoiceModal';
 import { gerarInsights, Insight, TipoInsight } from '../../services/insightsService';
+import type { InvoiceOps } from '../../services/invoiceService';
 import { normalizeName, nameKey } from '../../services/textService';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import {
@@ -16,6 +17,7 @@ interface DashboardModalProps {
     onClose: () => void;
     allFreelas: Freela[];
     bloqueios?: Bloqueio[];
+    invoiceOps?: InvoiceOps;
 }
 
 // Análise com a IA do Google (Gemini): desligada até a Generative Language API ser ativada no projeto
@@ -102,7 +104,7 @@ const BarraParticipacao: React.FC<{ rotulo: string; valor: number; pct: number; 
     </div>
 );
 
-const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFreelas, bloqueios = [] }) => {
+const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFreelas, bloqueios = [], invoiceOps }) => {
     const hoje = hojeStr();
     const anoAtual = new Date().getFullYear();
     const mesAtual = new Date().getMonth();
@@ -575,6 +577,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                     freelas={allFreelas}
                     contratanteInicial={cobrarDe}
                     periodoInicial={{ start: '', end: hoje }}
+                    invoiceOps={invoiceOps}
                 />,
                 document.getElementById('modal-root') || document.body
             )}

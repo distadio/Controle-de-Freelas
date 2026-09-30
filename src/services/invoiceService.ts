@@ -19,7 +19,61 @@ export interface InvoiceData {
     observacoes?: string;
     pix?: PixConfig | null;
     marca?: Marca | null; // logo e cor do cabeçalho
+    segundaVia?: boolean;
+    pagaEm?: string | null; // invoice já paga: sai como recibo, sem PIX
 }
+
+// Invoice emitida: fica registrada para consulta, baixa de pagamento e 2ª via
+export interface InvoiceRegistro {
+    id: string;
+    numero: string;
+    emissao: string;
+    vencimento: string;
+    contratante: string;
+    itens: Freela[]; // retrato dos freelas na emissão (a 2ª via sai igual à original)
+    total: number;
+    observacoes?: string | null;
+    prestador: Prestador;
+    pix: PixConfig | null;
+    cor?: string; // cor do cabeçalho usada na emissão
+    paga_em?: string | null; // baixa da invoice
+    pagos_pela_invoice?: string[]; // freelas que a baixa marcou como pagos (para desfazer)
+    cancelada?: boolean;
+    created_at: string;
+}
+
+export interface InvoiceOps {
+    lista: InvoiceRegistro[];
+    registrar: (inv: InvoiceRegistro) => void;
+    pagar: (id: string, data: string) => void;
+    desfazerPagamento: (id: string) => void;
+    cancelar: (id: string) => void;
+    excluir: (id: string) => void;
+}
+
+export type SituacaoInvoice = 'paga' | 'parcial' | 'vencida' | 'aberta' | 'cancelada';
+
+export const SITUACAO_INVOICE: Record<SituacaoInvoice, { texto: string; selo: string }> = {
+    paga: { texto: 'Paga', selo: 'bg-green-100 text-green-800' },
+    parcial: { texto: 'Paga em parte', selo: 'bg-sky-100 text-sky-800' },
+    vencida: { texto: 'Vencida', selo: 'bg-red-100 text-red-800' },
+    aberta: { texto: 'Em aberto', selo: 'bg-amber-100 text-amber-800' },
+    cancelada: { texto: 'Cancelada', selo: 'bg-gray-200 text-gray-700' },
+};
+
+// Situação atual, considerando também freelas pagos um a um depois da emissão
+export const situacaoInvoice = (inv: InvoiceRegistro, freelas: Freela[], hoje: string): { situacao: SituacaoInvoice; pagaEm: string | null } => {
+    if (inv.cancelada) return { situacao: 'cancelada', pagaEm: null };
+    if (inv.paga_em) return { situacao: 'paga', pagaEm: inv.paga_em };
+    const atuais = inv.itens.map(i => freelas.find(f => f.id === i.id)).filter((f): f is Freela => !!f);
+    const pagos = atuais.filter(f => f.status === 'pago');
+    if (atuais.length > 0 && pagos.length === atuais.length) {
+        const ultima = pagos.reduce((m, f) => ((f.data_pagamento || '') > m ? f.data_pagamento || '' : m), '');
+        return { situacao: 'paga', pagaEm: ultima || null };
+    }
+    if (pagos.length > 0) return { situacao: 'parcial', pagaEm: null };
+    return { situacao: inv.vencimento < hoje ? 'vencida' : 'aberta', pagaEm: null };
+};
 
 const CATEGORIAS: Record<string, string> = {
     som: 'Som', iluminacao: 'Iluminação', video: 'Vídeo', producao: 'Produção', performance: 'Performance',
@@ -87,7 +141,7 @@ export const gerarInvoicePdf = async (d: InvoiceData): Promise<Blob> => {
     doc.text('INVOICE', M, 17 + dy);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
-    doc.text('Fatura de Serviços', M, 25 + dy);
+    doc.text(d.segundaVia ? 'Fatura de Serviços - 2ª via' : 'Fatura de Serviços', M, 25 + dy);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.text(`Nº ${d.numero}`, W - M, 14 + dy, { align: 'right' });
@@ -173,7 +227,7 @@ export const gerarInvoicePdf = async (d: InvoiceData): Promise<Blob> => {
         margin: { left: M, right: M },
         head: [['#', 'Data', 'Descrição', 'Função', 'Local', 'Horário', 'Valor']],
         body,
-        foot: [[{ content: 'TOTAL A PAGAR', colSpan: 6, styles: { halign: 'right' } }, brl(total)]],
+        foot: [[{ content: d.pagaEm ? 'TOTAL PAGO' : 'TOTAL A PAGAR', colSpan: 6, styles: { halign: 'right' } }, brl(total)]],
         showFoot: 'lastPage',
         theme: 'grid',
         styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2, textColor: CINZA_TEXTO, lineColor: [229, 231, 235], lineWidth: 0.2, valign: 'middle' },
@@ -198,8 +252,25 @@ export const gerarInvoicePdf = async (d: InvoiceData): Promise<Blob> => {
         }
     };
 
+    // ---- Invoice paga: selo de quitação no lugar do PIX ----
+    if (d.pagaEm) {
+        garantirEspaco(20);
+        doc.setFillColor(220, 252, 231);
+        doc.setDrawColor(22, 163, 74);
+        doc.setLineWidth(0.6);
+        doc.roundedRect(M, y, W - 2 * M, 16, 2, 2, 'FD');
+        doc.setTextColor(21, 128, 61);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text(`PAGO EM ${dataBR(d.pagaEm)}`, W / 2, y + 7, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.text(`Recebemos ${brl(total)} referentes aos serviços acima. Obrigado!`, W / 2, y + 12.5, { align: 'center' });
+        y += 24;
+    }
+
     // ---- Pagamento via PIX ----
-    if (d.pix) {
+    if (d.pix && !d.pagaEm) {
         const chave = normalizarChavePix(d.pix.tipo, d.pix.chave);
         const copiaECola = gerarPixCopiaECola({ chave, nome: d.pix.nome, cidade: d.pix.cidade, valor: total, txid: d.numero });
         const qr = await QRCode.toDataURL(copiaECola, { errorCorrectionLevel: 'M', margin: 1, width: 360 });
@@ -259,7 +330,7 @@ export const gerarInvoicePdf = async (d: InvoiceData): Promise<Blob> => {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(...CINZA_CLARO);
-        doc.text(`Invoice ${d.numero} - gerada pelo app Controle de Freelas`, M, H - 8);
+        doc.text(`Invoice ${d.numero}${d.segundaVia ? ' (2ª via)' : ''} - gerada pelo app Controle de Freelas`, M, H - 8);
         doc.text(`Página ${p} de ${paginas}`, W - M, H - 8, { align: 'right' });
     }
 

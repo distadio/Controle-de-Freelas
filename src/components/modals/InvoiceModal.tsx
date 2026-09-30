@@ -5,7 +5,7 @@ import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { normalizeName, nameKey } from '../../services/textService';
 import { periodoFreelaTexto, addDays } from '../../services/bloqueioService';
 import { PixConfig, TIPOS_CHAVE_PIX, validarChavePix } from '../../services/pixService';
-import { Prestador, gerarInvoicePdf, nomeArquivoInvoice, periodoInvoice, totalInvoice } from '../../services/invoiceService';
+import { Prestador, InvoiceData, InvoiceOps, gerarInvoicePdf, nomeArquivoInvoice, periodoInvoice, totalInvoice } from '../../services/invoiceService';
 import { Marca, MARCA_PADRAO } from '../../services/marcaService';
 import MarcaEditor from '../MarcaEditor';
 
@@ -15,6 +15,7 @@ interface InvoiceModalProps {
     freelas: Freela[];
     contratanteInicial?: string;
     periodoInicial?: { start: string; end: string } | null;
+    invoiceOps?: InvoiceOps; // registra a invoice emitida
 }
 
 const brl = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -33,7 +34,7 @@ const statusInfo: Record<string, { badge: string; text: string }> = {
     atrasada: { badge: 'bg-red-100 text-red-800', text: 'Atrasado' },
 };
 
-const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, contratanteInicial, periodoInicial }) => {
+const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, contratanteInicial, periodoInicial, invoiceOps }) => {
     const [prestadorSalvo, setPrestadorSalvo] = useLocalStorage<Prestador>('controle_freelas_prestador', { nome: '', documento: '', contato: '' });
     const [pixPadrao, setPixPadrao] = useLocalStorage<PixConfig | null>('controle_freelas_pix_padrao', null);
     const [sequencia, setSequencia] = useLocalStorage<{ ano: number; n: number }>('controle_freelas_invoice_seq', { ano: 0, n: 0 });
@@ -68,7 +69,14 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
     const [gerando, setGerando] = useState(false);
     const [erro, setErro] = useState<string | null>(null);
     const [aviso, setAviso] = useState<string | null>(null);
-    const [pronto, setPronto] = useState<{ blob: Blob; arquivo: string } | null>(null);
+    const [pronto, setPronto] = useState<{ blob: Blob; arquivo: string; dados: InvoiceData; emitida: boolean } | null>(null);
+
+    // Freelas que já estão em outra invoice (não cancelada): evita cobrar duas vezes
+    const jaFaturado = useMemo(() => {
+        const mapa = new Map<string, string>();
+        (invoiceOps?.lista || []).filter(i => !i.cancelada).forEach(i => i.itens.forEach(f => { if (!mapa.has(f.id)) mapa.set(f.id, i.numero); }));
+        return mapa;
+    }, [invoiceOps?.lista]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -95,9 +103,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
         .sort((a, b) => a.data_evento.localeCompare(b.data_evento)),
     [freelas, contratante, de, ate, somenteAbertos]);
 
-    // Nova lista de candidatos: todos marcados por padrão
+    // Nova lista de candidatos: marcados por padrão, exceto os que já estão em outra invoice
     useEffect(() => {
-        setSelecionados(new Set(candidatos.map(f => f.id)));
+        setSelecionados(new Set(candidatos.filter(f => !jaFaturado.has(f.id)).map(f => f.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [candidatos]);
 
     // Qualquer alteração invalida o PDF já gerado
@@ -135,7 +144,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
         }
         setGerando(true);
         try {
-            const dados = {
+            const dados: InvoiceData = {
                 numero,
                 emissao: hoje(),
                 vencimento,
@@ -147,7 +156,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
                 marca,
             };
             const blob = await gerarInvoicePdf(dados);
-            setPronto({ blob, arquivo: nomeArquivoInvoice(dados) });
+            setPronto({ blob, arquivo: nomeArquivoInvoice(dados), dados, emitida: false });
         } catch (e) {
             console.error('Falha ao gerar invoice:', e);
             setErro('Não foi possível gerar o PDF. Verifique sua conexão e tente novamente.');
@@ -156,10 +165,28 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
         }
     };
 
+    // Na primeira vez que a invoice sai (envio ou download): consome o número e registra na aba Invoices
     const confirmarEmissao = () => {
+        if (!pronto || pronto.emitida) return;
+        const d = pronto.dados;
         setSequencia({ ano, n: (sequencia.ano === ano ? sequencia.n : 0) + 1 });
         setPrestadorSalvo(prestador);
         if (incluirPix && salvarPadrao) setPixPadrao(pix);
+        invoiceOps?.registrar({
+            id: `inv_${Date.now()}`,
+            numero: d.numero,
+            emissao: d.emissao,
+            vencimento: d.vencimento,
+            contratante: d.contratante,
+            itens: d.itens,
+            total: totalInvoice(d.itens),
+            observacoes: d.observacoes || null,
+            prestador: d.prestador,
+            pix: d.pix || null,
+            cor: d.marca?.cor,
+            created_at: new Date().toISOString(),
+        });
+        setPronto({ ...pronto, emitida: true });
     };
 
     const baixar = () => {
@@ -178,13 +205,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
     const enviar = async () => {
         if (!pronto) return;
         const arquivo = new File([pronto.blob], pronto.arquivo, { type: 'application/pdf' });
-        const texto = `Olá, ${contratante}! Segue a invoice nº ${numero} referente a ${itens.length} serviço${itens.length !== 1 ? 's' : ''}` +
+        const texto = `Olá, ${contratante}! Segue a invoice nº ${pronto.dados.numero} referente a ${itens.length} serviço${itens.length !== 1 ? 's' : ''}` +
             `${periodo ? ` de ${dataBR(periodo.inicio)} a ${dataBR(periodo.fim)}` : ''}. Total: ${brl(total)}.` +
             `${incluirPix ? ' O pagamento pode ser feito via PIX pelo QR Code ou copia e cola que estão no PDF.' : ''} Obrigado!`;
         const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
         if (nav.canShare && nav.canShare({ files: [arquivo] })) {
             try {
-                await nav.share({ files: [arquivo], title: `Invoice ${numero}`, text: texto });
+                await nav.share({ files: [arquivo], title: `Invoice ${pronto.dados.numero}`, text: texto });
                 confirmarEmissao();
             } catch (e) {
                 if ((e as Error).name !== 'AbortError') setErro('Não foi possível abrir o compartilhamento. Use "Baixar PDF".');
@@ -264,6 +291,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
                                                 <div className="text-right flex-shrink-0">
                                                     <p className="text-sm font-bold text-gray-900">{brl(f.valor)}</p>
                                                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${st.badge}`}>{st.text}</span>
+                                                    {jaFaturado.has(f.id) && (
+                                                        <span className="block mt-1 text-[10px] font-semibold text-purple-700">na invoice {jaFaturado.get(f.id)}</span>
+                                                    )}
                                                 </div>
                                             </label>
                                         );
@@ -382,7 +412,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
 
                         {pronto ? (
                             <div className="bg-white rounded-xl shadow-sm p-4 space-y-3 border-2 border-green-400">
-                                <p className="text-sm font-bold text-gray-900 text-center">✅ Invoice nº {numero} pronta — {brl(total)}</p>
+                                <p className="text-sm font-bold text-gray-900 text-center">✅ Invoice nº {pronto.dados.numero} pronta — {brl(total)}</p>
+                                {pronto.emitida && invoiceOps && (
+                                    <p className="text-xs text-green-700 text-center font-semibold">Registrada na aba 🧾 Invoices (menu + ou Relatório), para dar baixa quando for paga.</p>
+                                )}
                                 <button type="button" onClick={enviar} className="w-full bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition font-semibold flex items-center justify-center gap-2 shadow">
                                     📤 Enviar para {contratante} (WhatsApp, e-mail...)
                                 </button>

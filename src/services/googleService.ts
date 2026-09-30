@@ -1,4 +1,5 @@
 import { Freela, CloudBackupInfo, Bloqueio } from '../types';
+import type { InvoiceRegistro } from './invoiceService';
 import { addDays, isMultiDay } from './bloqueioService';
 
 declare global {
@@ -146,12 +147,13 @@ const getFileId = async (): Promise<string | null> => {
     }
 };
 
-export const uploadBackup = async (freelas: Freela[], bloqueios: Bloqueio[] = []) => {
+export const uploadBackup = async (freelas: Freela[], bloqueios: Bloqueio[] = [], invoices: InvoiceRegistro[] = []) => {
     try {
         const fileId = await getFileId();
         const fileContent = JSON.stringify({
             data: freelas,
             bloqueios,
+            invoices,
             timestamp: new Date().toISOString()
         });
         
@@ -191,7 +193,7 @@ export const uploadBackup = async (freelas: Freela[], bloqueios: Bloqueio[] = []
     }
 };
 
-export const getCloudBackup = async (): Promise<{ data: Freela[]; bloqueios?: Bloqueio[]; timestamp: string } | null> => {
+export const getCloudBackup = async (): Promise<{ data: Freela[]; bloqueios?: Bloqueio[]; invoices?: InvoiceRegistro[]; timestamp: string } | null> => {
     try {
         const fileId = await getFileId();
         if (!fileId) {
@@ -210,6 +212,7 @@ export const getCloudBackup = async (): Promise<{ data: Freela[]; bloqueios?: Bl
             return {
                 data: backupObject.data as Freela[],
                 bloqueios: Array.isArray(backupObject.bloqueios) ? backupObject.bloqueios as Bloqueio[] : undefined,
+                invoices: Array.isArray(backupObject.invoices) ? backupObject.invoices as InvoiceRegistro[] : undefined,
                 timestamp: backupObject.timestamp,
             };
         }
@@ -310,7 +313,7 @@ export const syncFreelaToCalendar = async (calendarId: string, freela: Freela): 
             start = { 'date': freela.data_evento };
             end = { 'date': endDate.toISOString().split('T')[0] };
         } else {
-            const startTime = freela.horario_inicio;
+            const startTime = freela.horario_inicio!; // neste ramo o freela tem horário (isAllDay é falso)
             let endTime = freela.horario_fim;
             if (!endTime) {
                 const d = new Date(`1970-01-01T${startTime}`);

@@ -5,6 +5,7 @@ import { Freela, Categoria, TipoServico, Bloqueio } from './types';
 import { addDays, freelaCobre, findBloqueio, formatShortBR } from './services/bloqueioService';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { entregasEmAlerta, prazoEntrega } from './services/entregaService';
+import type { InvoiceRegistro, InvoiceOps } from './services/invoiceService';
 import { useAuth } from './contexts/AuthContext';
 import { uploadBackup, getCloudBackup, findOrCreateCalendar, syncFreelaToCalendar, deleteCalendarEvent } from './services/googleService';
 import SplashScreen from './components/SplashScreen';
@@ -41,6 +42,8 @@ const App: React.FC = () => {
     const [showSplash, setShowSplash] = useState(true);
     const [freelas, setFreelas] = useLocalStorage<Freela[]>('controle_freelas_data_v2', []);
     const [bloqueios, setBloqueios] = useLocalStorage<Bloqueio[]>('controle_freelas_bloqueios', []);
+    const [invoices, setInvoices] = useLocalStorage<InvoiceRegistro[]>('controle_freelas_invoices', []);
+    const [abaRelatorio, setAbaRelatorio] = useState<'relatorio' | 'invoices'>('relatorio');
     const [selectedBloqueio, setSelectedBloqueio] = useState<Bloqueio | null>(null);
     const [isCloudAutoBackupEnabled, setCloudAutoBackupEnabled] = useLocalStorage('controle_freelas_auto_cloud_backup', false);
     const [privacyPolicyAccepted, setPrivacyPolicyAccepted] = useLocalStorage('controle_freelas_privacy_policy_accepted', false);
@@ -140,7 +143,7 @@ const App: React.FC = () => {
             debounceTimeoutRef.current = setTimeout(async () => {
                 console.log("Auto-saving to cloud...");
                 try {
-                    await uploadBackup(freelas, bloqueios);
+                    await uploadBackup(freelas, bloqueios, invoices);
                 } catch (error) {
                     console.error("Auto cloud backup failed:", error);
                     showToast("Falha no backup automático.", "error");
@@ -152,7 +155,7 @@ const App: React.FC = () => {
                 clearTimeout(debounceTimeoutRef.current);
             }
         };
-    }, [freelas, bloqueios, isLoggedIn, isCloudAutoBackupEnabled, showToast]);
+    }, [freelas, bloqueios, invoices, isLoggedIn, isCloudAutoBackupEnabled, showToast]);
 
     // On connecting to Google, reconcile local data with whatever is in the cloud:
     // whichever has more freelas (or, if tied, is more recently updated) wins, and
@@ -171,7 +174,7 @@ const App: React.FC = () => {
 
                 if (!cloudBackup) {
                     if (freelas.length > 0 || bloqueios.length > 0) {
-                        await uploadBackup(freelas, bloqueios);
+                        await uploadBackup(freelas, bloqueios, invoices);
                         showToast('Backup inicial salvo no Google Drive.', 'success');
                     }
                     return;
@@ -190,9 +193,10 @@ const App: React.FC = () => {
                     setFreelas(cloudBackup.data);
                     // Backups antigos não têm bloqueios: nesse caso mantém os locais
                     if (cloudBackup.bloqueios) setBloqueios(cloudBackup.bloqueios);
+                    if (cloudBackup.invoices) setInvoices(cloudBackup.invoices);
                     showToast('Dados mais recentes do Google Drive foram restaurados.', 'success');
                 } else if (freelas.length > 0 || bloqueios.length > 0) {
-                    await uploadBackup(freelas, bloqueios);
+                    await uploadBackup(freelas, bloqueios, invoices);
                     showToast('Seus dados locais (mais recentes) foram salvos no Google Drive.', 'success');
                 }
             } catch (error) {
@@ -353,6 +357,50 @@ const App: React.FC = () => {
     }, [freelas, setFreelas, showToast, isLoggedIn]);
 
 
+    // ---- Invoices emitidas ----
+    const hojeISO = () => todayString();
+    const invoiceOps: InvoiceOps = {
+        lista: invoices,
+        registrar: (inv) => setInvoices(prev => [inv, ...prev]),
+        // Baixa da invoice: todos os freelas dela passam a pagos na data informada
+        pagar: (id, data) => {
+            const inv = invoices.find(i => i.id === id);
+            if (!inv) return;
+            const ids = new Set(inv.itens.map(f => f.id));
+            const alterados: string[] = [];
+            const now = new Date().toISOString();
+            setFreelas(freelas.map(f => {
+                if (!ids.has(f.id) || f.status === 'pago') return f;
+                alterados.push(f.id);
+                return { ...f, status: 'pago', data_pagamento: data, updated_at: now };
+            }));
+            setInvoices(invoices.map(i => (i.id === id ? { ...i, paga_em: data, pagos_pela_invoice: alterados } : i)));
+            showToast(`Invoice ${inv.numero} paga! ${alterados.length} freela${alterados.length !== 1 ? 's' : ''} marcado${alterados.length !== 1 ? 's' : ''} como pago${alterados.length !== 1 ? 's' : ''}.`);
+        },
+        // Desfaz só o que a baixa alterou; o status volta a pendente ou atrasado pelo vencimento
+        desfazerPagamento: (id) => {
+            const inv = invoices.find(i => i.id === id);
+            if (!inv) return;
+            const ids = new Set(inv.pagos_pela_invoice || []);
+            const hoje = hojeISO();
+            const now = new Date().toISOString();
+            setFreelas(freelas.map(f => {
+                if (!ids.has(f.id) || f.status !== 'pago' || f.data_pagamento !== inv.paga_em) return f;
+                return { ...f, status: f.data_vencimento && f.data_vencimento < hoje ? 'atrasada' : 'pendente', data_pagamento: null, updated_at: now };
+            }));
+            setInvoices(invoices.map(i => (i.id === id ? { ...i, paga_em: null, pagos_pela_invoice: [] } : i)));
+            showToast(`Pagamento da invoice ${inv.numero} desfeito.`);
+        },
+        cancelar: (id) => {
+            setInvoices(invoices.map(i => (i.id === id ? { ...i, cancelada: true } : i)));
+            showToast('Invoice cancelada.');
+        },
+        excluir: (id) => {
+            setInvoices(invoices.filter(i => i.id !== id));
+            showToast('Invoice excluída.');
+        },
+    };
+
     const handleTogglePayment = (freela: Freela) => {
         const newStatus = freela.status === 'pago' ? 'pendente' : 'pago';
         const updatedFreela = {
@@ -498,6 +546,8 @@ const App: React.FC = () => {
                 setFreelas={setFreelas}
                 bloqueios={bloqueios}
                 setBloqueios={setBloqueios}
+                invoices={invoices}
+                setInvoices={setInvoices}
                 showToast={showToast}
                 isLoggedIn={isLoggedIn}
                 user={user}
@@ -518,6 +568,7 @@ const App: React.FC = () => {
                     onClose={() => setActiveModal(null)}
                     allFreelas={freelas}
                     bloqueios={bloqueios}
+                    invoiceOps={invoiceOps}
                 />
             </Suspense>
         )}
@@ -541,6 +592,8 @@ const App: React.FC = () => {
                 onClose={() => setActiveModal(null)}
                 freelas={freelas}
                 currentDate={currentDate}
+                invoiceOps={invoiceOps}
+                abaInicial={abaRelatorio}
              />
         )}
         
@@ -594,7 +647,7 @@ const App: React.FC = () => {
                     onPrevMonth={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}
                     onNextMonth={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}
                     onGoToday={() => setCurrentDate(new Date())}
-                    onOpenReport={() => setActiveModal('report')}
+                    onOpenReport={() => { setAbaRelatorio('relatorio'); setActiveModal('report'); }}
                     theme={theme}
                     onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                     user={user}
@@ -703,6 +756,11 @@ const App: React.FC = () => {
                     if (action === 'feedback') {
                         const texto = encodeURIComponent('Olá! Tenho um feedback sobre o app Controle de Freelas: ');
                         window.open(`https://wa.me/5511995700408?text=${texto}`, '_blank', 'noopener');
+                        return;
+                    }
+                    if (action === 'invoices') {
+                        setAbaRelatorio('invoices');
+                        setActiveModal('report');
                         return;
                     }
                     setActiveModal(action);
