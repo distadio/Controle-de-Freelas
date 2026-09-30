@@ -21,7 +21,9 @@ const formatDataForPrompt = (data: Freela[]): string => {
         category: f.categoria,
         service_type: f.tipo_servico,
         client: f.contratante || 'N/A',
-        paid: f.status === 'pago'
+        payment_status: f.status, // pago | pendente | atrasada
+        sub_payout: f.sub ? (f.sub.integral ? f.valor : f.sub.valor) : 0, // repasse a um substituto
+        delivery_deadline: !!f.entrega,
     }));
     return JSON.stringify(summary, null, 2);
 };
@@ -43,6 +45,7 @@ export const generateDashboardInsights = async (yearlyData: Freela[]): Promise<s
         2.  **Diversificação de Serviços e Clientes:** Comente sobre a variedade de categorias de serviço e contratantes. Há dependência de algum cliente ou tipo de serviço? Sugira oportunidades de diversificação ou especialização.
         3.  **Precificação e Valor:** Analise o ticket médio. Sugira estratégias para aumentar o valor percebido e o ticket médio (ex: pacotes de serviço, upsell).
         4.  **Fidelização de Clientes:** Analise a recorrência de contratantes. Dê dicas de como aumentar a fidelização.
+        5.  **Saúde Financeira:** Comente pagamentos atrasados/pendentes (inadimplência) e, se houver repasses a substitutos (sub_payout), a margem líquida. Sugira como cobrar melhor e proteger o caixa.
         
         Seja conciso, direto e use uma linguagem motivadora e profissional. Formate a resposta usando títulos, listas e negrito. Não inclua o JSON de dados na sua resposta.
 
