@@ -5,6 +5,7 @@ import BaseModal from './BaseModal';
 import InvoiceModal from './InvoiceModal';
 import { normalizeName, nameKey } from '../../services/textService';
 import { periodoFreelaTexto } from '../../services/bloqueioService';
+import { repasseSub } from '../../services/subService';
 
 interface ReportModalProps {
     isOpen: boolean;
@@ -22,10 +23,14 @@ interface Filtros {
     status: string;
     local: string;
     mei: string;
+    sub: string; // '' | SUB_EU | SUB_QUALQUER | nome do sub
     busca: string;
 }
 
-const FILTROS_VAZIOS: Filtros = { contratante: '', tipo: '', categoria: '', status: '', local: '', mei: '', busca: '' };
+const FILTROS_VAZIOS: Filtros = { contratante: '', tipo: '', categoria: '', status: '', local: '', mei: '', sub: '', busca: '' };
+
+const SUB_EU = '__eu';
+const SUB_QUALQUER = '__sub';
 
 const STATUS_LABEL: Record<string, string> = { pago: 'Pago', pendente: 'Pendente', atrasada: 'Atrasado' };
 const rotuloEnum = (v: string) => v.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -116,13 +121,17 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
     const activeFilterCount = Object.values(filters).filter(v => v !== '').length;
 
     // Opções de contratante e local vindas dos próprios freelas (nomes normalizados, sem duplicatas)
-    const { opcoesContratante, opcoesLocal } = useMemo(() => {
+    const { opcoesContratante, opcoesLocal, opcoesSub } = useMemo(() => {
         const unicos = (valores: (string | null | undefined)[]) => {
             const mapa = new Map<string, string>();
             valores.forEach(v => { const k = nameKey(v); if (k && !mapa.has(k)) mapa.set(k, normalizeName(v)); });
             return [...mapa.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
         };
-        return { opcoesContratante: unicos(freelas.map(f => f.contratante)), opcoesLocal: unicos(freelas.map(f => f.local)) };
+        return {
+            opcoesContratante: unicos(freelas.map(f => f.contratante)),
+            opcoesLocal: unicos(freelas.map(f => f.local)),
+            opcoesSub: unicos(freelas.map(f => f.sub?.nome)),
+        };
     }, [freelas]);
 
     const applyFilters = (list: Freela[]) => {
@@ -134,6 +143,9 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
             && (!filters.status || f.status === filters.status)
             && (!filters.local || nameKey(f.local) === nameKey(filters.local))
             && (filters.mei === '' || (filters.mei === 'true' ? f.declara_mei : !f.declara_mei))
+            && (!filters.sub || (filters.sub === SUB_EU ? !f.sub
+                : filters.sub === SUB_QUALQUER ? !!f.sub
+                : nameKey(f.sub?.nome) === nameKey(filters.sub)))
             && (!busca || `${f.descricao} ${f.observacoes || ''}`.toLocaleLowerCase('pt-BR').includes(busca))
         );
     };
@@ -146,6 +158,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
         filters.status && { chave: 'status' as const, texto: `Status: ${STATUS_LABEL[filters.status]}` },
         filters.local && { chave: 'local' as const, texto: `Local: ${filters.local}` },
         filters.mei && { chave: 'mei' as const, texto: filters.mei === 'true' ? 'MEI declarado' : 'MEI não declarado' },
+        filters.sub && { chave: 'sub' as const, texto: filters.sub === SUB_EU ? 'Feitos por mim' : filters.sub === SUB_QUALQUER ? 'Com sub' : `Sub: ${filters.sub}` },
         filters.busca.trim() && { chave: 'busca' as const, texto: `Busca: "${filters.busca.trim()}"` },
     ].filter(Boolean) as { chave: keyof Filtros; texto: string }[];
     const descricaoFiltros = filtrosAtivos.map(f => f.texto).join(' | ');
@@ -153,7 +166,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
     const inRange = (list: Freela[], range: { start: string; end: string } | null) =>
         range ? list.filter(f => f.data_evento >= range.start && f.data_evento <= range.end) : list;
 
-    const { filteredFreelas, stats, prevStats, categorias, contratantes } = useMemo(() => {
+    const { filteredFreelas, stats, prevStats, categorias, contratantes, subsPorNome } = useMemo(() => {
         const range = getPeriodRange(anchor, scope, datas);
         const filteredFreelas = applyFilters(inRange(freelas, range))
             .sort((a, b) => a.data_evento.localeCompare(b.data_evento));
@@ -163,8 +176,14 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
             const paid = list.filter(f => f.status === 'pago').reduce((s, f) => s + f.valor, 0);
             const late = list.filter(f => f.status === 'atrasada').reduce((s, f) => s + f.valor, 0);
             const mei = list.filter(f => f.declara_mei).reduce((s, f) => s + f.valor, 0);
+            const comSub = list.filter(f => f.sub);
+            const subs = comSub.reduce((s, f) => s + repasseSub(f), 0);
+            const subsPagar = comSub.filter(f => !f.sub!.pago).reduce((s, f) => s + repasseSub(f), 0);
             return {
                 total, paid, late, mei,
+                subs, subsPagar,
+                subsCount: comSub.length,
+                liquido: total - subs,
                 receivable: total - paid,
                 count: list.length,
                 paidCount: list.filter(f => f.status === 'pago').length,
@@ -206,7 +225,18 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
             .sort((a, b) => b.total - a.total)
             .slice(0, 5);
 
-        return { filteredFreelas, stats, prevStats, categorias, contratantes };
+        const subMap = new Map<string, { name: string; total: number; count: number; aPagar: number }>();
+        filteredFreelas.filter(f => f.sub).forEach(f => {
+            const key = nameKey(f.sub!.nome);
+            const entry = subMap.get(key) || { name: normalizeName(f.sub!.nome), total: 0, count: 0, aPagar: 0 };
+            entry.total += repasseSub(f);
+            entry.count += 1;
+            if (!f.sub!.pago) entry.aPagar += repasseSub(f);
+            subMap.set(key, entry);
+        });
+        const subsPorNome = [...subMap.values()].sort((a, b) => b.total - a.total);
+
+        return { filteredFreelas, stats, prevStats, categorias, contratantes, subsPorNome };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [freelas, anchor, scope, filters, datas]);
 
@@ -227,7 +257,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
     const handleExportCsv = () => {
         const esc = (s: string) => `"${(s || '').replace(/"/g, '""')}"`;
         const rows: string[][] = [
-            ['Data', 'Descrição', 'Categoria', 'Tipo de Serviço', 'Contratante', 'Local', 'Status', 'MEI', 'Valor (R$)'],
+            ['Data', 'Descrição', 'Categoria', 'Tipo de Serviço', 'Contratante', 'Local', 'Status', 'MEI', 'Valor (R$)', 'Sub', 'Repasse ao sub (R$)', 'Sub pago', 'Líquido (R$)'],
             ...filteredFreelas.map(f => [
                 periodoFreelaTexto(f),
                 esc(f.descricao),
@@ -238,6 +268,10 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                 f.status === 'pago' ? 'Pago' : f.status === 'atrasada' ? 'Atrasado' : 'Pendente',
                 f.declara_mei ? 'Sim' : 'Não',
                 csvNumber(f.valor),
+                esc(f.sub?.nome || ''),
+                f.sub ? csvNumber(repasseSub(f)) : '',
+                f.sub ? (f.sub.pago ? 'Sim' : 'Não') : '',
+                csvNumber(f.valor - repasseSub(f)),
             ]),
             [],
             [`TOTAL ACUMULADO (${stats.count} freelas)`, '', '', '', '', '', '', '', csvNumber(stats.total)],
@@ -246,6 +280,11 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
             ['Atrasado', '', '', '', '', '', '', '', csvNumber(stats.late)],
             ['MEI Declarado', '', '', '', '', '', '', '', csvNumber(stats.mei)],
             ['Ticket Médio', '', '', '', '', '', '', '', csvNumber(stats.avg)],
+            ...(stats.subsCount > 0 ? [
+                [`Gasto com subs (${stats.subsCount} freelas)`, '', '', '', '', '', '', '', csvNumber(stats.subs)],
+                ['A pagar aos subs', '', '', '', '', '', '', '', csvNumber(stats.subsPagar)],
+                ['Lucro líquido (total - subs)', '', '', '', '', '', '', '', csvNumber(stats.liquido)],
+            ] : []),
             [],
             ['Período', esc(periodLabel)],
             ...(descricaoFiltros ? [['Filtros aplicados', esc(descricaoFiltros)]] : []),
@@ -265,10 +304,11 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
     // ---------- Export: PDF / Impressão (via iframe, sem popup) ----------
     const handleExportPdf = () => {
         const statusLabel: Record<string, string> = { pago: 'Pago', pendente: 'Pendente', atrasada: 'Atrasado' };
+        const temSubs = filteredFreelas.some(f => f.sub);
         const rowsHtml = filteredFreelas.map(f => `
             <tr>
                 <td>${periodoFreelaTexto(f)}</td>
-                <td>${f.descricao}</td>
+                <td>${f.descricao}${temSubs && f.sub ? `<div class="subl">Sub: ${f.sub.nome} &minus; ${formatCurrency(repasseSub(f))}${f.sub.pago ? ' (pago)' : ' (a pagar)'}</div>` : ''}</td>
                 <td>${getCategoriaDisplay(f).label}</td>
                 <td>${f.contratante || '-'}</td>
                 <td class="st-${f.status}">${statusLabel[f.status] || f.status}</td>
@@ -278,6 +318,9 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
 
         const catsHtml = categorias.map(c => `
             <tr><td>${c.icon} ${c.label}</td><td>${c.count}</td><td class="num">${formatCurrency(c.total)}</td></tr>`).join('');
+
+        const subsHtml = subsPorNome.map(c => `
+            <tr><td>${c.name}</td><td>${c.count}</td><td class="num">${formatCurrency(c.aPagar)}</td><td class="num">${formatCurrency(c.total)}</td></tr>`).join('');
 
         const clisHtml = contratantes.map(c => `
             <tr><td>${c.name}</td><td>${c.count}</td><td class="num">${formatCurrency(c.total)}</td></tr>`).join('');
@@ -303,6 +346,8 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
     .st-pago { color: #059669; font-weight: 600; }
     .st-pendente { color: #d97706; font-weight: 600; }
     .st-atrasada { color: #dc2626; font-weight: 600; }
+    .subl { font-size: 10px; color: #0f766e; font-weight: 600; margin-top: 2px; }
+    .kpi.sub { background: #f0fdfa; border-color: #5eead4; }
     tfoot td { border-top: 2px solid #1f2937; font-weight: 700; font-size: 13px; }
     @media print { body { padding: 8px; } }
 </style></head><body>
@@ -318,10 +363,16 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
         <div class="kpi"><div class="l">Atrasado</div><div class="v">${formatCurrency(stats.late)}</div><div class="l">${stats.lateCount} freela${stats.lateCount !== 1 ? 's' : ''}</div></div>
         <div class="kpi"><div class="l">MEI Declarado</div><div class="v">${formatCurrency(stats.mei)}</div><div class="l">${stats.meiCount} freela${stats.meiCount !== 1 ? 's' : ''}</div></div>
         <div class="kpi"><div class="l">Ticket Médio</div><div class="v">${formatCurrency(stats.avg)}</div></div>
+        ${stats.subsCount > 0 ? `
+        <div class="kpi sub"><div class="l">Gasto com Subs</div><div class="v">${formatCurrency(stats.subs)}</div><div class="l">${stats.subsCount} freela${stats.subsCount !== 1 ? 's' : ''} &bull; ${formatCurrency(stats.subsPagar)} a pagar</div></div>
+        <div class="kpi hl"><div class="l">Lucro Líquido</div><div class="v">${formatCurrency(stats.liquido)}</div><div class="l">total &minus; subs</div></div>` : ''}
     </div>
 
     ${categorias.length > 0 ? `<h2>Por Categoria</h2>
     <table><thead><tr><th>Categoria</th><th>Freelas</th><th class="num-h">Valor</th></tr></thead><tbody>${catsHtml}</tbody></table>` : ''}
+
+    ${subsPorNome.length > 0 ? `<h2>Repasses a Subs</h2>
+    <table><thead><tr><th>Sub</th><th>Freelas</th><th class="num-h">A pagar</th><th class="num-h">Total repassado</th></tr></thead><tbody>${subsHtml}</tbody></table>` : ''}
 
     ${contratantes.length > 0 ? `<h2>Por Contratante (Top 5)</h2>
     <table><thead><tr><th>Contratante</th><th>Freelas</th><th class="num-h">Valor</th></tr></thead><tbody>${clisHtml}</tbody></table>` : ''}
@@ -330,7 +381,9 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
     <table>
         <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Contratante</th><th>Status</th><th>MEI</th><th class="num-h">Valor</th></tr></thead>
         <tbody>${rowsHtml || '<tr><td colspan="7">Nenhum freela no período.</td></tr>'}</tbody>
-        <tfoot><tr><td colspan="6">TOTAL ACUMULADO — ${stats.count} freela${stats.count !== 1 ? 's' : ''}</td><td class="num">${formatCurrency(stats.total)}</td></tr></tfoot>
+        <tfoot><tr><td colspan="6">TOTAL ACUMULADO — ${stats.count} freela${stats.count !== 1 ? 's' : ''}</td><td class="num">${formatCurrency(stats.total)}</td></tr>
+        ${stats.subsCount > 0 ? `<tr><td colspan="6">Gasto com subs</td><td class="num">&minus; ${formatCurrency(stats.subs)}</td></tr>
+        <tr><td colspan="6">LUCRO LÍQUIDO</td><td class="num">${formatCurrency(stats.liquido)}</td></tr>` : ''}</tfoot>
     </table>
 </body></html>`;
 
@@ -432,6 +485,13 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                             <FilterSelect name="status" value={filters.status} onChange={handleFilterChange} label="Status do pagamento" options={{ '': 'Todos', ...STATUS_LABEL }} />
                             <FilterSelect name="local" value={filters.local} onChange={handleFilterChange} label="Local" options={{ '': 'Todos', ...Object.fromEntries(opcoesLocal.map(l => [l, l])) }} />
                             <FilterSelect name="mei" value={filters.mei} onChange={handleFilterChange} label="MEI" options={{ '': 'Todos', 'true': 'Declarado', 'false': 'Não Declarado' }} />
+                            <FilterSelect
+                                name="sub"
+                                value={filters.sub}
+                                onChange={handleFilterChange}
+                                label="Quem executou"
+                                options={{ '': 'Todos', [SUB_EU]: 'Eu mesmo', [SUB_QUALQUER]: 'Com sub (qualquer)', ...Object.fromEntries(opcoesSub.map(n => [n, `Sub: ${n}`])) }}
+                            />
                             <div className="sm:col-span-2">
                                 <label htmlFor="relBusca" className="block text-xs font-medium text-gray-700 mb-1">Buscar na descrição / observações</label>
                                 <input id="relBusca" name="busca" value={filters.busca} onChange={handleFilterChange} placeholder="Ex: pagode, casamento..." className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm" />
@@ -464,12 +524,24 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                                 <div className="h-full bg-white rounded-full transition-all duration-500" style={{ width: `${stats.paidPercent}%` }}></div>
                             </div>
                         </div>
+                        {stats.subsCount > 0 && (
+                            <div className="mt-3 pt-2 border-t border-white/30 flex justify-between text-xs font-semibold">
+                                <span>🔁 Subs: − {formatCurrency(stats.subs)}</span>
+                                <span>Líquido: {formatCurrency(stats.liquido)}</span>
+                            </div>
+                        )}
                     </div>
 
                     <MiniKpi label="A Receber" value={formatCurrency(stats.receivable)} sub={`${stats.pendingCount} pendente${stats.pendingCount !== 1 ? 's' : ''}`} color="from-yellow-400 to-amber-500" />
                     <MiniKpi label="Atrasado" value={formatCurrency(stats.late)} sub={`${stats.lateCount} freela${stats.lateCount !== 1 ? 's' : ''}`} color="from-red-400 to-rose-500" />
                     <MiniKpi label="MEI Declarado" value={formatCurrency(stats.mei)} sub={`${stats.meiCount} freela${stats.meiCount !== 1 ? 's' : ''}`} color="from-cyan-400 to-sky-500" />
                     <MiniKpi label="Ticket Médio" value={formatCurrency(stats.avg)} sub="por freela" color="from-violet-400 to-purple-500" />
+                    {stats.subsCount > 0 && (
+                        <>
+                            <MiniKpi label="Gasto com Subs" value={formatCurrency(stats.subs)} sub={`${formatCurrency(stats.subsPagar)} a pagar`} color="from-teal-500 to-cyan-600" />
+                            <MiniKpi label="Lucro Líquido" value={formatCurrency(stats.liquido)} sub="total − subs" color="from-emerald-600 to-teal-700" />
+                        </>
+                    )}
                 </div>
 
                 {/* Exportação */}
@@ -492,6 +564,26 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, freelas, cur
                         <div className="space-y-3">
                             {categorias.map(c => (
                                 <BreakdownRow key={c.label} icon={c.icon} label={c.label} count={c.count} total={c.total} max={maxCat} barColor="bg-purple-500" />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Repasses a subs */}
+                {subsPorNome.length > 0 && (
+                    <div className="bg-white rounded-xl shadow-sm p-4">
+                        <h4 className="text-sm font-bold text-gray-900 mb-3">🔁 Repasses a Subs</h4>
+                        <div className="space-y-3">
+                            {subsPorNome.map(c => (
+                                <BreakdownRow
+                                    key={c.name}
+                                    label={c.name}
+                                    count={c.count}
+                                    total={c.total}
+                                    max={subsPorNome[0].total}
+                                    barColor="bg-teal-500"
+                                    nota={c.aPagar > 0 ? `${formatCurrency(c.aPagar)} a pagar` : 'tudo pago'}
+                                />
                             ))}
                         </div>
                     </div>
@@ -552,12 +644,13 @@ const MiniKpi: React.FC<{ label: string; value: string; sub: string; color: stri
     </div>
 );
 
-const BreakdownRow: React.FC<{ icon?: string; label: string; count: number; total: number; max: number; barColor: string }> = ({ icon, label, count, total, max, barColor }) => (
+const BreakdownRow: React.FC<{ icon?: string; label: string; count: number; total: number; max: number; barColor: string; nota?: string }> = ({ icon, label, count, total, max, barColor, nota }) => (
     <div>
         <div className="flex items-center justify-between text-sm mb-1">
             <span className="font-semibold text-gray-800 truncate pr-2">{icon ? `${icon} ` : ''}{label} <span className="text-gray-400 font-normal">({count})</span></span>
             <span className="font-bold text-gray-900 whitespace-nowrap">{formatCurrency(total)}</span>
         </div>
+        {nota && <div className="text-[11px] text-gray-500 -mt-0.5 mb-1">{nota}</div>}
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div className={`h-full ${barColor} rounded-full transition-all duration-500`} style={{ width: `${max > 0 ? Math.max(4, Math.round((total / max) * 100)) : 0}%` }}></div>
         </div>
@@ -590,6 +683,11 @@ const ReportFreelaCard: React.FC<{ freela: Freela }> = ({ freela }) => {
                     <span className="text-gray-500">{periodoFreelaTexto(freela)}</span>
                     {freela.contratante && <span className="text-gray-500 truncate max-w-[110px]">• {freela.contratante}</span>}
                 </div>
+                {freela.sub && (
+                    <p className="text-xs font-semibold text-teal-700 mt-1 truncate">
+                        🔁 Sub: {freela.sub.nome} • − {formatCurrency(repasseSub(freela))}{freela.sub.pago ? ' (pago)' : ' (a pagar)'}
+                    </p>
+                )}
             </div>
             <div className="flex-shrink-0 text-right">
                 <p className="font-bold text-gray-900">{formatCurrency(freela.valor)}</p>

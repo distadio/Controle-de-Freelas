@@ -2,6 +2,7 @@ import React from 'react';
 import { Freela } from '../../types';
 import BaseModal from './BaseModal';
 import { isMultiDay, daysBetween } from '../../services/bloqueioService';
+import { repasseSub, liquidoFreela, alternarPagamentoSub, whatsappNumero } from '../../services/subService';
 
 interface FreelaDetailsModalProps {
     isOpen: boolean;
@@ -61,6 +62,40 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
         }
     };
 
+    // Manda ao sub os dados do trabalho com o valor do repasse (não o cachê cheio)
+    const handleEnviarAoSub = async () => {
+        if (!freela.sub) return;
+        const categoria = (freela.categoria === 'outro' && freela.categoria_customizada)
+            ? freela.categoria_customizada
+            : freela.categoria.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        const linhas = [
+            `Olá, ${freela.sub.nome}! Seguem os dados do freela:`,
+            '',
+            `🎭 *${freela.descricao}*`,
+            `📅 ${periodo}${freela.horario_inicio ? ` • ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}${festival ? ' (diário)' : ''}` : ''}`,
+        ];
+        if (freela.local) linhas.push(`📍 ${freela.local}`);
+        linhas.push(`🎛️ Função: ${categoria}`);
+        linhas.push(`💰 Seu cachê: ${formatCurrency(repasseSub(freela))}`);
+        if (freela.observacoes) linhas.push(`📝 ${freela.observacoes}`);
+        const texto = linhas.join('\n');
+
+        const numero = whatsappNumero(freela.sub.contato);
+        if (numero) {
+            window.open(`https://wa.me/${numero}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+            return;
+        }
+        if (navigator.share) {
+            try { await navigator.share({ title: freela.descricao, text: texto }); } catch { /* cancelado */ }
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(texto);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch { /* clipboard indisponível */ }
+    };
+
     const statusInfo = {
         pago: { badge: 'status-paid', text: 'Pago', button: 'Marcar como Pendente', btnClass: 'bg-yellow-500 hover:bg-yellow-600' },
         pendente: { badge: 'status-pending', text: 'Pendente', button: 'Marcar como Pago', btnClass: 'bg-green-500 hover:bg-green-600' },
@@ -97,6 +132,42 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
                         {statusInfo.button}
                     </button>
                 </div>
+
+                {freela.sub && (
+                    <div className="bg-teal-50 border-2 border-teal-200 rounded-lg p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <p className="text-xs font-bold uppercase text-teal-700">🔁 Sub no seu lugar</p>
+                                <p className="text-lg font-bold text-gray-900 truncate">{freela.sub.nome}</p>
+                                {freela.sub.contato && <p className="text-xs text-gray-600">{freela.sub.contato}</p>}
+                            </div>
+                            <span className={`flex-shrink-0 px-2 py-1 text-xs font-semibold rounded-full ${freela.sub.pago ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {freela.sub.pago ? `Sub pago${freela.sub.data_pagamento ? ` ${formatDate(freela.sub.data_pagamento).slice(0, 5)}` : ''}` : 'A pagar ao sub'}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div className="bg-white rounded-lg p-2">
+                                <p className="text-[11px] text-gray-500">Repasse{freela.sub.integral ? ' (integral)' : ''}</p>
+                                <p className="font-bold text-gray-900">{formatCurrency(repasseSub(freela))}</p>
+                            </div>
+                            <div className="bg-white rounded-lg p-2">
+                                <p className="text-[11px] text-gray-500">Você fica com</p>
+                                <p className={`font-bold ${liquidoFreela(freela) < 0 ? 'text-red-600' : 'text-gray-900'}`}>{formatCurrency(liquidoFreela(freela))}</p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={() => onUpdate(alternarPagamentoSub(freela))}
+                                className={`py-2 rounded-lg text-sm font-semibold transition-colors ${freela.sub.pago ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-teal-600 text-white hover:bg-teal-700'}`}
+                            >
+                                {freela.sub.pago ? 'Desmarcar pgto' : '✅ Paguei o sub'}
+                            </button>
+                            <button onClick={handleEnviarAoSub} className="py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+                                {copied ? 'Copiado!' : '📲 Enviar ao sub'}
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 <div className="space-y-3 text-sm border-t border-gray-200 pt-4">
                     {(freela.horario_inicio || freela.horario_fim) && <DetailItem label="Horário" value={`${freela.horario_inicio || ''} - ${freela.horario_fim || ''}`} />}

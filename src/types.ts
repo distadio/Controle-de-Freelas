@@ -33,6 +33,17 @@ export enum Categoria {
     Outro = 'outro'
 }
 
+// Sub: outra pessoa que vai no meu lugar. O contratante continua me pagando
+// o valor cheio; eu repasso ao sub o cachê integral ou parte dele.
+export interface SubFreela {
+    nome: string;
+    contato?: string | null; // WhatsApp / telefone
+    integral: boolean; // repassa o cachê inteiro do freela
+    valor: number; // valor do repasse (igual ao do freela quando integral)
+    pago: boolean; // já paguei o sub
+    data_pagamento?: string | null; // YYYY-MM-DD
+}
+
 export interface Freela {
     id: string;
     descricao: string;
@@ -52,6 +63,7 @@ export interface Freela {
     data_pagamento?: string | null; // YYYY-MM-DD
     declara_mei: boolean;
     google_calendar_event_id?: string | null;
+    sub?: SubFreela | null; // sub no meu lugar: a data fica livre para outro freela
     created_at: string; // ISO String
     updated_at: string; // ISO String
     conflictWith?: string; // ID of the conflicting freela

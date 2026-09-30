@@ -309,9 +309,9 @@ export const syncFreelaToCalendar = async (calendarId: string, freela: Freela): 
         }
         
         const eventResource = {
-            'summary': freela.descricao,
+            'summary': freela.sub ? `🔁 SUB ${freela.sub.nome} — ${freela.descricao}` : freela.descricao,
             'location': freela.local || '',
-            'description': `${multiDay ? `Festival / cachê único${freela.horario_inicio ? `\nHorário diário: ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}` : ''}\n` : ''}Contratante: ${freela.contratante || 'N/A'}\nTipo: ${freela.tipo_servico.replace(/_/g, ' ')}\nFunção: ${freela.categoria.replace(/_/g, ' ')}\n\nObservações: ${freela.observacoes || ''}\n\nGerado por Controle de Freelas`,
+            'description': `${multiDay ? `Festival / cachê único${freela.horario_inicio ? `\nHorário diário: ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}` : ''}\n` : ''}Contratante: ${freela.contratante || 'N/A'}\nTipo: ${freela.tipo_servico.replace(/_/g, ' ')}\nFunção: ${freela.categoria.replace(/_/g, ' ')}${freela.sub ? `\nSub no meu lugar: ${freela.sub.nome}${freela.sub.contato ? ` (${freela.sub.contato})` : ''}` : ''}\n\nObservações: ${freela.observacoes || ''}\n\nGerado por Controle de Freelas`,
             'start': start,
             'end': end,
             'reminders': {

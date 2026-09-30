@@ -68,6 +68,11 @@ const FreelaCard: React.FC<FreelaCardProps> = ({ freela, onClick, allFreelas }) 
                     )}
                     <div className="flex items-center gap-3 flex-wrap text-xs">
                         <span className={`inline-block px-2 py-1 font-semibold rounded-full ${styles.badgeBg} ${styles.badgeText}`}>{styles.text}</span>
+                        {freela.sub && (
+                            <span className="inline-block px-2 py-1 font-semibold rounded-full bg-teal-100 text-teal-800 truncate max-w-[140px]" title={`Sub: ${freela.sub.nome}`}>
+                                🔁 Sub: {freela.sub.nome}
+                            </span>
+                        )}
                         {freela.horario_inicio && (
                             <span className="text-gray-500 flex items-center gap-1">
                                 <span>🕒</span>

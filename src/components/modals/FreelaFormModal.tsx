@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Freela, TipoServico, Categoria, Bloqueio, TipoBloqueio } from '../../types';
+import { Freela, TipoServico, Categoria, Bloqueio, TipoBloqueio, SubFreela } from '../../types';
 import BaseModal from './BaseModal';
 import { normalizeName, nameKey } from '../../services/textService';
 import {
     addDays, daysBetween, eachDate, formatDateBR, formatShortBR, isMultiDay,
     freelaCobre, findFestival, findBloqueio, rotuloBloqueio, periodoFreelaTexto,
 } from '../../services/bloqueioService';
+import { meOcupa, subVazio, normalizarSub, subsConhecidos } from '../../services/subService';
 
 interface FreelaFormModalProps {
     isOpen: boolean;
@@ -30,6 +31,8 @@ const JUSTIFICATIVAS: { id: Justificativa; icon: string; titulo: string; desc: s
 ];
 
 const MAX_DIAS = 366;
+
+const brl = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 const inputClass = 'w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
@@ -76,6 +79,11 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
             locais: [...lMap.values()].sort((a, b) => a.localeCompare(b, 'pt-BR')),
         };
     }, [allFreelas]);
+
+    const subsSugeridos = useMemo(() => subsConhecidos(allFreelas), [allFreelas]);
+
+    // Só os freelas em que vou pessoalmente ocupam a data (com sub, a data fica livre)
+    const ocupam = useMemo(() => allFreelas.filter(meOcupa), [allFreelas]);
 
     useEffect(() => {
         setRepetirSemanas(0);
@@ -134,6 +142,20 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
         }));
     };
 
+    const sub = formData.sub || null;
+    const alterarSub = (patch: Partial<SubFreela>) =>
+        setFormData(prev => ({ ...prev, sub: { ...(prev.sub || subVazio()), ...patch } }));
+
+    // Mesmo sub digitado com outra grafia ("joão " x "João"): salva com a grafia já usada
+    const nomeSubCanonico = (nome: string) =>
+        allFreelas.find(f => f.id !== editingId && f.sub && nameKey(f.sub.nome) === nameKey(nome))?.sub!.nome ?? nome;
+
+    // Ao escolher um sub já conhecido, completa o contato
+    const alterarNomeSub = (nome: string) => {
+        const conhecido = subsSugeridos.find(s => nameKey(s.nome) === nameKey(nome));
+        alterarSub(conhecido && !sub?.contato ? { nome, contato: conhecido.contato || '' } : { nome });
+    };
+
     // Mostra um alerta que exige confirmação; retorna true se a submissão deve parar
     const precisaConfirmar = (mensagem: string): boolean => {
         if (confirmadoRef.current) return false;
@@ -179,6 +201,7 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
             categoria_customizada: formData.categoria === 'outro' ? formData.categoria_customizada : null,
             declara_mei: formData.declara_mei || false,
             data_fim: null,
+            sub: formData.sub ? normalizarSub({ ...formData.sub, nome: nomeSubCanonico(formData.sub.nome) }, formData.valor || 0) : null,
             ...extra,
         };
     };
@@ -200,7 +223,7 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
             setErro(`Parte deste período já está bloqueada (${rotuloBloqueio(jaBloqueado)}: ${formatDateBR(jaBloqueado.data_inicio)} a ${formatDateBR(jaBloqueado.data_fim)}).`);
             return;
         }
-        const ocupados = allFreelas.filter(f => dias.some(d => freelaCobre(f, d)));
+        const ocupados = ocupam.filter(f => dias.some(d => freelaCobre(f, d)));
         if (ocupados.length > 0) {
             const { texto, mantido } = resumoExistentes(ocupados);
             if (precisaConfirmar(`${texto} ${mantido}, mas a data ficará bloqueada para novos freelas. Deseja bloquear mesmo assim?`)) return;
@@ -233,7 +256,8 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
             setErro(`O período inclui uma data bloqueada (${rotuloBloqueio(b)} em ${formatDateBR(diaBloqueado)}). Desbloqueie antes de cadastrar o festival.`);
             return;
         }
-        const outros = allFreelas.filter(f => f.id !== editingId && dias.some(d => freelaCobre(f, d)));
+        // Com sub no festival, eu fico livre: não há o que alertar
+        const outros = formData.sub ? [] : ocupam.filter(f => f.id !== editingId && dias.some(d => freelaCobre(f, d)));
         if (outros.length > 0) {
             const { texto, mantido } = resumoExistentes(outros);
             if (precisaConfirmar(`${texto} ${mantido} e ${outros.length > 1 ? 'essas datas aparecerão' : 'a data aparecerá'} como alterada${outros.length > 1 ? 's' : ''} no calendário. Deseja continuar?`)) return;
@@ -259,10 +283,13 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
         const puladas = ocorrencias.filter(d => findBloqueio(bloqueios, d));
         const datas = [inicio, ...ocorrencias.filter(d => !findBloqueio(bloqueios, d))];
 
+        // Com sub, eu não estou no evento: sem alerta de festival nem conflito de horário
+        const comSub = !!formData.sub;
+
         // Freela adicional dentro de um festival: alerta antes de cadastrar
-        if (!mesmaData) {
+        if (!mesmaData && !comSub) {
             const emFestival = datas
-                .map(d => ({ d, f: findFestival(allFreelas, d, editingId) }))
+                .map(d => ({ d, f: findFestival(ocupam, d, editingId) }))
                 .filter((x): x is { d: string; f: Freela } => !!x.f);
             if (emFestival.length > 0) {
                 const f = emFestival[0].f;
@@ -276,13 +303,13 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
 
         // Conflito de horário no mesmo dia (freelas de um dia só)
         const { horario_inicio, horario_fim } = formData;
-        if (horario_inicio && horario_fim && inicio) {
+        if (!comSub && horario_inicio && horario_fim && inicio) {
             const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
             const ini = toMin(horario_inicio);
             let fim = toMin(horario_fim);
             if (fim <= ini) fim += 24 * 60;
 
-            const conflitante = allFreelas.find(ex => {
+            const conflitante = ocupam.find(ex => {
                 if (ex.id === editingId || isMultiDay(ex)) return false;
                 if (ex.data_evento !== inicio || !ex.horario_inicio || !ex.horario_fim) return false;
                 const exIni = toMin(ex.horario_inicio);
@@ -306,6 +333,7 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
                     id: `freela_${Date.now()}_${i}`,
                     data_evento: d,
                     data_vencimento: base.data_vencimento ? addDays(base.data_vencimento, deslocamento) : null,
+                    sub: base.sub && i > 0 ? { ...base.sub, pago: false, data_pagamento: null } : base.sub,
                 };
             });
             onSaveMany(lote, puladas);
@@ -550,6 +578,91 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
                         <div>
                             <label htmlFor="observacoes" className={labelClass}>Observações</label>
                             <textarea id="observacoes" name="observacoes" value={formData.observacoes || ''} onChange={handleChange} rows={3} className={inputClass} placeholder="Informações adicionais..."></textarea>
+                        </div>
+                        <div className="bg-teal-50 border-2 border-teal-200 rounded-lg p-4 space-y-3">
+                            {!sub ? (
+                                <button type="button" onClick={() => alterarSub({})} className="w-full flex items-center gap-3 text-left">
+                                    <span className="text-2xl">🔁</span>
+                                    <div>
+                                        <div className="font-semibold text-gray-900">➕ Adicionar sub</div>
+                                        <div className="text-xs text-gray-600">Não vai poder ir? Mande alguém no seu lugar. A data fica livre para outro freela e o repasse entra no relatório.</div>
+                                    </div>
+                                </button>
+                            ) : (
+                                <>
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-semibold text-gray-900">🔁 Sub no meu lugar</span>
+                                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, sub: null }))} className="text-xs font-semibold text-red-600 underline">
+                                            Remover sub
+                                        </button>
+                                    </div>
+                                    <div>
+                                        <label htmlFor="subNome" className={labelClass}>Nome do sub *</label>
+                                        <input type="text" id="subNome" list="subs-sugeridos" value={sub.nome} onChange={(e) => alterarNomeSub(e.target.value)} required maxLength={60} className={inputClass} placeholder="Quem vai no seu lugar" />
+                                        <datalist id="subs-sugeridos">
+                                            {subsSugeridos.map(s => <option key={s.nome} value={s.nome} />)}
+                                        </datalist>
+                                    </div>
+                                    <div>
+                                        <label htmlFor="subContato" className={labelClass}>WhatsApp do sub</label>
+                                        <input type="tel" id="subContato" value={sub.contato || ''} onChange={(e) => alterarSub({ contato: e.target.value })} className={inputClass} placeholder="(11) 99999-9999" />
+                                    </div>
+                                    <div>
+                                        <span className={labelClass}>Quanto vai para o sub? *</span>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => alterarSub({ integral: true })}
+                                                className={`p-2 rounded-lg border-2 text-sm font-semibold bg-white text-gray-900 ${sub.integral ? 'border-teal-600' : 'border-gray-200'}`}
+                                            >
+                                                Cachê integral
+                                                <span className="block text-xs font-normal text-gray-600">{brl(formData.valor || 0)}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => alterarSub({ integral: false })}
+                                                className={`p-2 rounded-lg border-2 text-sm font-semibold bg-white text-gray-900 ${!sub.integral ? 'border-teal-600' : 'border-gray-200'}`}
+                                            >
+                                                Outro valor
+                                                <span className="block text-xs font-normal text-gray-600">parte do cachê</span>
+                                            </button>
+                                        </div>
+                                        {!sub.integral && (
+                                            <div className="mt-2">
+                                                <label htmlFor="subValor" className={labelClass}>Valor do repasse (R$) *</label>
+                                                <input
+                                                    type="number"
+                                                    id="subValor"
+                                                    value={sub.valor || ''}
+                                                    onChange={(e) => alterarSub({ valor: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
+                                                    step="0.01"
+                                                    min="0.01"
+                                                    required
+                                                    className={inputClass}
+                                                    placeholder="0,00"
+                                                />
+                                            </div>
+                                        )}
+                                        {(() => {
+                                            const valor = formData.valor || 0;
+                                            const repasse = sub.integral ? valor : (sub.valor || 0);
+                                            const sobra = valor - repasse;
+                                            return (
+                                                <p className="text-xs text-gray-700 mt-2">
+                                                    Você recebe {brl(valor)} do contratante, repassa {brl(repasse)} e{' '}
+                                                    {sobra >= 0
+                                                        ? <>fica com <strong className="text-teal-700">{brl(sobra)}</strong>.</>
+                                                        : <>tem <strong className="text-red-600">prejuízo de {brl(-sobra)}</strong>.</>}
+                                                </p>
+                                            );
+                                        })()}
+                                    </div>
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <input type="checkbox" checked={sub.pago} onChange={(e) => alterarSub({ pago: e.target.checked, data_pagamento: null })} className="w-5 h-5" />
+                                        <span className="text-sm font-medium text-gray-800">Já paguei o sub</span>
+                                    </label>
+                                </>
+                            )}
                         </div>
                         <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
                             <label className="flex items-center gap-3 cursor-pointer">

@@ -85,6 +85,11 @@ html.dark { color-scheme: dark; }
 .dark .text-yellow-800 { color: #fde68a !important; }
 .dark .text-blue-700 { color: #93c5fd !important; }
 .dark .text-indigo-700 { color: #a5b4fc !important; }
+.dark .bg-violet-50 { background-color: #2e1065 !important; }
+.dark .border-violet-200 { border-color: #6d28d9 !important; }
+.dark .bg-teal-50 { background-color: #042f2e !important; }
+.dark .border-teal-200 { border-color: #0f766e !important; }
+.dark .text-teal-700 { color: #5eead4 !important; }
 
 .dark .ring-offset-2 { --tw-ring-offset-color: #1e293b; }
 .dark .shadow-sm, .dark .shadow, .dark .shadow-lg, .dark .shadow-2xl {

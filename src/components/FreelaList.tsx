@@ -28,7 +28,8 @@ const FreelaList: React.FC<FreelaListProps> = ({ currentDate, freelas, onFreelaC
                     freela.descricao.toLowerCase().includes(lowerCaseSearch) ||
                     (freela.contratante && freela.contratante.toLowerCase().includes(lowerCaseSearch)) ||
                     (freela.local && freela.local.toLowerCase().includes(lowerCaseSearch)) ||
-                    (freela.categoria_customizada && freela.categoria_customizada.toLowerCase().includes(lowerCaseSearch))
+                    (freela.categoria_customizada && freela.categoria_customizada.toLowerCase().includes(lowerCaseSearch)) ||
+                    (freela.sub?.nome && freela.sub.nome.toLowerCase().includes(lowerCaseSearch))
                 );
             })
             .sort((a, b) => a.data_evento.localeCompare(b.data_evento));

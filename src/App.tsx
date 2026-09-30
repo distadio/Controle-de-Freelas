@@ -197,14 +197,17 @@ const App: React.FC = () => {
     }, [isLoggedIn]);
 
     const handleSaveFreela = (freela: Freela) => {
+        // Com sub eu não estou no evento: desfaz a marcação de conflito de horário dos dois lados
+        const salvo = freela.sub && freela.conflictWith ? { ...freela, conflictWith: undefined } : freela;
+        const liberarConflito = (lista: Freela[]) => freela.sub
+            ? lista.map(f => (f.conflictWith === freela.id ? { ...f, conflictWith: undefined } : f))
+            : lista;
         const index = freelas.findIndex(f => f.id === freela.id);
         if (index > -1) {
-            const updatedFreelas = [...freelas];
-            updatedFreelas[index] = freela;
-            setFreelas(updatedFreelas);
+            setFreelas(liberarConflito(freelas.map(f => (f.id === freela.id ? salvo : f))));
             showToast('Freela atualizado com sucesso!');
         } else {
-            setFreelas([...freelas, freela]);
+            setFreelas([...freelas, salvo]);
             showToast('Freela adicionado com sucesso!');
         }
         setActiveModal(null);
@@ -263,6 +266,7 @@ const App: React.FC = () => {
             data_pagamento: null,
             google_calendar_event_id: null,
             conflictWith: undefined,
+            sub: freela.sub ? { ...freela.sub, pago: false, data_pagamento: null } : null,
         });
         setSelectedDate(null);
         setActiveModal('freelaForm');
