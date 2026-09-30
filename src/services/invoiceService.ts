@@ -1,6 +1,7 @@
 import { Freela } from '../types';
 import { isMultiDay } from './bloqueioService';
 import { PixConfig, TIPOS_CHAVE_PIX, normalizarChavePix, gerarPixCopiaECola } from './pixService';
+import { Marca, MARCA_PADRAO, hexParaRgb, textoSobre, clarear, corDeTexto, fundoDoLogo } from './marcaService';
 
 export interface Prestador {
     nome: string;
@@ -17,6 +18,7 @@ export interface InvoiceData {
     itens: Freela[];
     observacoes?: string;
     pix?: PixConfig | null;
+    marca?: Marca | null; // logo e cor do cabeçalho
 }
 
 const CATEGORIAS: Record<string, string> = {
@@ -50,7 +52,6 @@ export const periodoInvoice = (itens: Freela[]): { inicio: string; fim: string }
 export const nomeArquivoInvoice = (d: InvoiceData) =>
     `invoice-${d.numero}-${pdfText(d.contratante).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'contratante'}.pdf`;
 
-const VIOLETA: [number, number, number] = [124, 58, 237];
 const CINZA_TEXTO: [number, number, number] = [55, 65, 81];
 const CINZA_CLARO: [number, number, number] = [107, 114, 128];
 
@@ -69,27 +70,50 @@ export const gerarInvoicePdf = async (d: InvoiceData): Promise<Blob> => {
     const total = totalInvoice(d.itens);
     const periodo = periodoInvoice(d.itens);
 
-    // ---- Cabeçalho ----
-    doc.setFillColor(...VIOLETA);
-    doc.rect(0, 0, W, 36, 'F');
-    doc.setTextColor(255, 255, 255);
+    // Cores da marca: cabeçalho, tabela e destaques seguem a cor escolhida
+    const marca = d.marca || MARCA_PADRAO;
+    const COR = hexParaRgb(marca.cor);
+    const TEXTO_CABECALHO = textoSobre(marca.cor);
+    const COR_TEXTO = corDeTexto(marca.cor);
+
+    // ---- Cabeçalho (logo centralizado entre o título e os dados da invoice) ----
+    const headerH = marca.logo ? 40 : 36;
+    const dy = (headerH - 36) / 2;
+    doc.setFillColor(...COR);
+    doc.rect(0, 0, W, headerH, 'F');
+    doc.setTextColor(...TEXTO_CABECALHO);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(26);
-    doc.text('INVOICE', M, 17);
+    doc.text('INVOICE', M, 17 + dy);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
-    doc.text('Fatura de Serviços', M, 25);
+    doc.text('Fatura de Serviços', M, 25 + dy);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text(`Nº ${d.numero}`, W - M, 14, { align: 'right' });
+    doc.text(`Nº ${d.numero}`, W - M, 14 + dy, { align: 'right' });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Emissão: ${dataBR(d.emissao)}`, W - M, 21, { align: 'right' });
+    doc.text(`Emissão: ${dataBR(d.emissao)}`, W - M, 21 + dy, { align: 'right' });
     doc.setFont('helvetica', 'bold');
-    doc.text(`Vencimento: ${dataBR(d.vencimento)}`, W - M, 27, { align: 'right' });
+    doc.text(`Vencimento: ${dataBR(d.vencimento)}`, W - M, 27 + dy, { align: 'right' });
+
+    if (marca.logo) {
+        const props = doc.getImageProperties(marca.logo);
+        const escala = Math.min(62 / props.width, (headerH - 10) / props.height);
+        const w = props.width * escala;
+        const h = props.height * escala;
+        const x = (W - w) / 2;
+        const y = (headerH - h) / 2;
+        const fundo = fundoDoLogo(marca);
+        if (fundo) {
+            doc.setFillColor(...fundo);
+            doc.roundedRect(x - 2.5, y - 2, w + 5, h + 4, 2, 2, 'F');
+        }
+        doc.addImage(marca.logo, props.fileType === 'PNG' ? 'PNG' : 'JPEG', x, y, w, h, 'logo', 'FAST');
+    }
 
     // ---- Prestador / Contratante ----
-    const boxY = 44;
+    const boxY = headerH + 8;
     const boxW = (W - 2 * M - 6) / 2;
     const boxH = 30;
     doc.setDrawColor(229, 231, 235);
@@ -153,9 +177,9 @@ export const gerarInvoicePdf = async (d: InvoiceData): Promise<Blob> => {
         showFoot: 'lastPage',
         theme: 'grid',
         styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2, textColor: CINZA_TEXTO, lineColor: [229, 231, 235], lineWidth: 0.2, valign: 'middle' },
-        headStyles: { fillColor: VIOLETA, textColor: 255, fontStyle: 'bold', fontSize: 8 },
-        footStyles: { fillColor: [237, 233, 254], textColor: [46, 16, 101], fontStyle: 'bold', fontSize: 10.5 },
-        alternateRowStyles: { fillColor: [250, 249, 255] },
+        headStyles: { fillColor: COR, textColor: TEXTO_CABECALHO, fontStyle: 'bold', fontSize: 8 },
+        footStyles: { fillColor: clarear(marca.cor, 0.85), textColor: COR_TEXTO, fontStyle: 'bold', fontSize: 10.5 },
+        alternateRowStyles: { fillColor: clarear(marca.cor, 0.96) },
         columnStyles: {
             0: { cellWidth: 8, halign: 'center' },
             1: { cellWidth: 24 },
@@ -183,13 +207,13 @@ export const gerarInvoicePdf = async (d: InvoiceData): Promise<Blob> => {
         const altura = Math.max(56, 40 + linhasCopia.length * 2.8);
 
         garantirEspaco(altura);
-        doc.setDrawColor(...VIOLETA);
+        doc.setDrawColor(...COR);
         doc.setLineWidth(0.5);
         doc.roundedRect(M, y, W - 2 * M, altura, 2, 2);
         doc.addImage(qr, 'PNG', M + 4, y + 5, 46, 46, undefined, 'FAST');
 
         const x = M + 56;
-        doc.setTextColor(...VIOLETA);
+        doc.setTextColor(...COR_TEXTO);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
         doc.text('PAGAMENTO VIA PIX', x, y + 9);

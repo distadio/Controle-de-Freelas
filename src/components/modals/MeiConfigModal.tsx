@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import BaseModal from './BaseModal';
+import MarcaEditor from '../MarcaEditor';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { Marca, MARCA_PADRAO } from '../../services/marcaService';
 
 interface MeiConfigModalProps {
     isOpen: boolean;
@@ -12,12 +15,13 @@ const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style
 
 const MeiConfigModal: React.FC<MeiConfigModalProps> = ({ isOpen, onClose, limiteAnual, onSave }) => {
     const [valor, setValor] = useState<string>(String(limiteAnual));
+    const [marca, setMarca] = useLocalStorage<Marca>('controle_freelas_marca', MARCA_PADRAO);
 
     const parsed = parseFloat(valor);
     const valido = !isNaN(parsed) && parsed > 0;
 
     return (
-        <BaseModal isOpen={isOpen} onClose={onClose} title="Limite MEI" titleIcon="⚙️" applyPhoneAspectRatio={false}>
+        <BaseModal isOpen={isOpen} onClose={onClose} title="Minha empresa (MEI)" titleIcon="⚙️" applyPhoneAspectRatio={false}>
             <div className="p-6 space-y-4">
                 <p className="text-sm text-gray-700">
                     O teto de faturamento do MEI é <strong>anual</strong> e é reajustado pelo governo
@@ -46,8 +50,14 @@ const MeiConfigModal: React.FC<MeiConfigModalProps> = ({ isOpen, onClose, limite
                     disabled={!valido}
                     className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
                 >
-                    Salvar
+                    Salvar limite
                 </button>
+
+                <div className="border-t-2 border-gray-200 pt-4">
+                    <h4 className="text-sm font-bold text-gray-900">🎨 Logo e cor das invoices</h4>
+                    <p className="text-xs text-gray-600 mb-3">O logo aparece centralizado no cabeçalho das invoices. Alterações são salvas na hora.</p>
+                    <MarcaEditor marca={marca} onChange={setMarca} />
+                </div>
             </div>
         </BaseModal>
     );

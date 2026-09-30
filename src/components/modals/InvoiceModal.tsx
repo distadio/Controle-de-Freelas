@@ -6,6 +6,8 @@ import { normalizeName, nameKey } from '../../services/textService';
 import { periodoFreelaTexto, addDays } from '../../services/bloqueioService';
 import { PixConfig, TIPOS_CHAVE_PIX, validarChavePix } from '../../services/pixService';
 import { Prestador, gerarInvoicePdf, nomeArquivoInvoice, periodoInvoice, totalInvoice } from '../../services/invoiceService';
+import { Marca, MARCA_PADRAO } from '../../services/marcaService';
+import MarcaEditor from '../MarcaEditor';
 
 interface InvoiceModalProps {
     isOpen: boolean;
@@ -35,6 +37,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
     const [prestadorSalvo, setPrestadorSalvo] = useLocalStorage<Prestador>('controle_freelas_prestador', { nome: '', documento: '', contato: '' });
     const [pixPadrao, setPixPadrao] = useLocalStorage<PixConfig | null>('controle_freelas_pix_padrao', null);
     const [sequencia, setSequencia] = useLocalStorage<{ ano: number; n: number }>('controle_freelas_invoice_seq', { ano: 0, n: 0 });
+    // Logo e cor são salvos na hora (valem para as próximas invoices)
+    const [marca, setMarca] = useLocalStorage<Marca>('controle_freelas_marca', MARCA_PADRAO);
+    const [marcaAberta] = useState(() => !marca.logo);
 
     // Contratantes com totais em aberto (nomes normalizados, sem duplicatas)
     const contratantes = useMemo(() => {
@@ -99,7 +104,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
     useEffect(() => {
         setPronto(null);
         setErro(null);
-    }, [contratante, de, ate, somenteAbertos, selecionados, vencimento, observacoes, prestador, incluirPix, pix]);
+    }, [contratante, de, ate, somenteAbertos, selecionados, vencimento, observacoes, prestador, incluirPix, pix, marca]);
 
     const itens = candidatos.filter(f => selecionados.has(f.id));
     const total = totalInvoice(itens);
@@ -139,6 +144,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
                 itens,
                 observacoes,
                 pix: incluirPix ? pix : null,
+                marca,
             };
             const blob = await gerarInvoicePdf(dados);
             setPronto({ blob, arquivo: nomeArquivoInvoice(dados) });
@@ -281,6 +287,20 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, freelas, c
                                 <textarea id="invObs" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={2} maxLength={400} className={inputClass} placeholder="Ex: favor enviar o comprovante após o pagamento." />
                             </div>
                         </div>
+
+                        {/* Logo e cor */}
+                        <details className="bg-white rounded-xl shadow-sm p-4" open={marcaAberta}>
+                            <summary className="text-sm font-bold text-gray-900 cursor-pointer">
+                                🎨 Logo e cor da invoice{' '}
+                                <span className="inline-block w-3.5 h-3.5 rounded-full align-middle mx-1 border border-white shadow" style={{ background: marca.cor }} />
+                                {marca.logo
+                                    ? <img src={marca.logo} alt="" className="inline-block h-5 max-w-[70px] object-contain align-middle" />
+                                    : <span className="font-normal text-xs text-amber-600">— adicione o logo da sua empresa</span>}
+                            </summary>
+                            <div className="mt-3">
+                                <MarcaEditor marca={marca} onChange={setMarca} numero={numero} />
+                            </div>
+                        </details>
 
                         {/* Dados do prestador */}
                         <details className="bg-white rounded-xl shadow-sm p-4" open={!prestadorSalvo.nome}>
