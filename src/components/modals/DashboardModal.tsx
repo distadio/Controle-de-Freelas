@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Freela } from '../../types';
+import { Freela, Bloqueio } from '../../types';
 import BaseModal from './BaseModal';
 import InvoiceModal from './InvoiceModal';
-import { generateDashboardInsights } from '../../services/geminiService';
+import { gerarInsights, Insight, TipoInsight } from '../../services/insightsService';
 import { normalizeName, nameKey } from '../../services/textService';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import {
@@ -15,7 +15,44 @@ interface DashboardModalProps {
     isOpen: boolean;
     onClose: () => void;
     allFreelas: Freela[];
+    bloqueios?: Bloqueio[];
 }
+
+// Análise com a IA do Google (Gemini): desligada até a Generative Language API ser ativada no projeto
+const IA_EXTERNA_ATIVA = false;
+
+const ESTILO_INSIGHT: Record<TipoInsight, { rotulo: string; borda: string; selo: string }> = {
+    alerta: { rotulo: 'Atenção', borda: 'border-l-red-500', selo: 'bg-red-100 text-red-800' },
+    oportunidade: { rotulo: 'Oportunidade', borda: 'border-l-amber-500', selo: 'bg-amber-100 text-amber-800' },
+    dica: { rotulo: 'Dica', borda: 'border-l-sky-500', selo: 'bg-sky-100 text-sky-800' },
+    conquista: { rotulo: 'Conquista', borda: 'border-l-green-500', selo: 'bg-green-100 text-green-800' },
+};
+
+const CartaoInsight: React.FC<{ insight: Insight; onCobrar: (nome: string) => void }> = ({ insight, onCobrar }) => {
+    const estilo = ESTILO_INSIGHT[insight.tipo];
+    return (
+        <div className={`bg-gray-50 rounded-lg border-l-4 ${estilo.borda} p-3`}>
+            <div className="flex items-start gap-2.5">
+                <span className="text-xl leading-none mt-0.5">{insight.icone}</span>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-bold text-gray-900">{insight.titulo}</p>
+                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${estilo.selo}`}>{estilo.rotulo}</span>
+                    </div>
+                    <p className="text-xs text-gray-700 mt-1 leading-relaxed">{insight.texto}</p>
+                    {insight.sugestao && (
+                        <p className="text-xs text-gray-600 mt-1.5 leading-relaxed"><strong className="text-gray-800">Sugestão:</strong> {insight.sugestao}</p>
+                    )}
+                    {insight.cobrar && (
+                        <button onClick={() => onCobrar(insight.cobrar!)} className="mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg">
+                            🧾 Cobrar {insight.cobrar}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const MESES_LONGOS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -65,7 +102,7 @@ const BarraParticipacao: React.FC<{ rotulo: string; valor: number; pct: number; 
     </div>
 );
 
-const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFreelas }) => {
+const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFreelas, bloqueios = [] }) => {
     const hoje = hojeStr();
     const anoAtual = new Date().getFullYear();
     const mesAtual = new Date().getMonth();
@@ -77,6 +114,14 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
     const [insights, setInsights] = useState<string>('');
     const [isLoadingInsights, setIsLoadingInsights] = useState(false);
     const [meiLimiteAnual] = useLocalStorage<number>('controle_freelas_mei_limite_anual', 81000);
+    const [verTodosInsights, setVerTodosInsights] = useState(false);
+
+    // Insights locais: consideram todos os contratantes do ano escolhido
+    const insightsLocais = useMemo(
+        () => gerarInsights({ todos: allFreelas, bloqueios, ano, hoje, meiLimite: meiLimiteAnual }),
+        [allFreelas, bloqueios, ano, hoje, meiLimiteAnual],
+    );
+    useEffect(() => setVerTodosInsights(false), [ano]);
 
     const anos = useMemo(() => {
         const set = new Set(allFreelas.map(f => parseInt(f.data_evento.slice(0, 4), 10)).filter(a => !isNaN(a)));
@@ -132,6 +177,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
         setIsLoadingInsights(true);
         setInsights('');
         try {
+            const { generateDashboardInsights } = await import('../../services/geminiService');
             setInsights(await generateDashboardInsights(d.doAno));
         } catch (error) {
             console.error(error);
@@ -228,6 +274,27 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                         detalhe={`em ${d.mesesComDados} ${d.mesesComDados === 1 ? 'mês' : 'meses'} com freela`}
                     />
                 </div>
+
+                {/* Insights locais */}
+                <Secao
+                    titulo="💡 Insights para o seu negócio"
+                    subtitulo={`Gerados no próprio app a partir dos seus freelas de ${ano}${contratante ? ' (todos os contratantes)' : ''}, sem enviar seus dados para fora.`}
+                >
+                    <div className="space-y-2.5">
+                        {(verTodosInsights ? insightsLocais : insightsLocais.slice(0, 4)).map(i => (
+                            <CartaoInsight key={i.id} insight={i} onCobrar={setCobrarDe} />
+                        ))}
+                    </div>
+                    {insightsLocais.length > 4 && (
+                        <button
+                            onClick={() => setVerTodosInsights(v => !v)}
+                            className="w-full mt-3 py-2 text-sm font-semibold text-indigo-600 bg-gray-50 hover:bg-gray-100 rounded-lg"
+                        >
+                            {verTodosInsights ? 'Mostrar menos' : `Ver todos os ${insightsLocais.length} insights`}
+                        </button>
+                    )}
+                    <p className="text-[10px] text-gray-400 mt-2 text-center">Sugestões automáticas. Não substituem a orientação de um contador.</p>
+                </Secao>
 
                 {/* Quem te deve */}
                 <Secao titulo="💰 Quem te deve" subtitulo={`Trabalhos já feitos e ainda não pagos${temDevedorOutroAno ? ' (inclui anos anteriores)' : ''}`}>
@@ -470,7 +537,8 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                     </p>
                 </Secao>
 
-                {/* IA */}
+                {/* IA externa (Gemini) */}
+                {IA_EXTERNA_ATIVA && (
                 <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4">
                     <h4 className="text-base font-bold text-gray-900 mb-2 flex items-center gap-2">
                         <span className="text-2xl">🤖</span>
@@ -497,6 +565,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                         <div className="mt-4 p-4 bg-white rounded-lg border prose prose-sm max-w-none text-gray-800" dangerouslySetInnerHTML={{ __html: insights.replace(/\n/g, '<br />') }} />
                     )}
                 </div>
+                )}
             </div>
 
             {cobrarDe && ReactDOM.createPortal(

@@ -517,6 +517,7 @@ const App: React.FC = () => {
                     isOpen={true}
                     onClose={() => setActiveModal(null)}
                     allFreelas={freelas}
+                    bloqueios={bloqueios}
                 />
             </Suspense>
         )}
