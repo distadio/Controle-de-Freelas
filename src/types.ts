@@ -44,6 +44,14 @@ export interface SubFreela {
     data_pagamento?: string | null; // YYYY-MM-DD
 }
 
+// Trabalho com prazo (edição, mixagem...): não tem horário de início/fim.
+// Nesse caso data_evento é a data de entrega (deadline).
+export interface EntregaFreela {
+    hora?: string | null; // entregar até (HH:MM), opcional
+    entregue: boolean;
+    data_entregue?: string | null; // YYYY-MM-DD
+}
+
 export interface Freela {
     id: string;
     descricao: string;
@@ -64,6 +72,7 @@ export interface Freela {
     declara_mei: boolean;
     google_calendar_event_id?: string | null;
     sub?: SubFreela | null; // sub no meu lugar: a data fica livre para outro freela
+    entrega?: EntregaFreela | null; // prazo de entrega no lugar de horário
     created_at: string; // ISO String
     updated_at: string; // ISO String
     conflictWith?: string; // ID of the conflicting freela

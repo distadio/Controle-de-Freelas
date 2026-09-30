@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Freela } from '../types';
 import { isMultiDay, daysBetween } from '../services/bloqueioService';
+import { prazoEntrega, CORES_URGENCIA } from '../services/entregaService';
 
 interface FreelaCardProps {
     freela: Freela;
@@ -72,6 +73,18 @@ const FreelaCard: React.FC<FreelaCardProps> = ({ freela, onClick, allFreelas }) 
                             <span className="inline-block px-2 py-1 font-semibold rounded-full bg-teal-100 text-teal-800 truncate max-w-[140px]" title={`Sub: ${freela.sub.nome}`}>
                                 🔁 Sub: {freela.sub.nome}
                             </span>
+                        )}
+                        {freela.entrega && (
+                            freela.entrega.entregue ? (
+                                <span className="inline-block px-2 py-1 font-semibold rounded-full bg-green-100 text-green-800 whitespace-nowrap">📦 Entregue</span>
+                            ) : (() => {
+                                const prazo = prazoEntrega(freela);
+                                return (
+                                    <span className={`inline-block px-2 py-1 font-semibold rounded-full whitespace-nowrap ${CORES_URGENCIA[prazo.urgencia]}`}>
+                                        📦 {prazo.curto}
+                                    </span>
+                                );
+                            })()
                         )}
                         {freela.horario_inicio && (
                             <span className="text-gray-500 flex items-center gap-1">

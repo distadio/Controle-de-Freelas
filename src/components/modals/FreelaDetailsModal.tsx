@@ -3,6 +3,7 @@ import { Freela } from '../../types';
 import BaseModal from './BaseModal';
 import { isMultiDay, daysBetween } from '../../services/bloqueioService';
 import { repasseSub, liquidoFreela, alternarPagamentoSub, whatsappNumero } from '../../services/subService';
+import { prazoEntrega, alternarEntregue, CORES_URGENCIA } from '../../services/entregaService';
 
 interface FreelaDetailsModalProps {
     isOpen: boolean;
@@ -33,11 +34,16 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
         ? `${formatDate(freela.data_evento)} a ${formatDate(freela.data_fim)} (${daysBetween(freela.data_evento, freela.data_fim!) + 1} dias)`
         : formatDate(freela.data_evento);
 
+    // Linha de data das mensagens: horário do evento ou prazo de entrega
+    const quandoTexto = freela.entrega
+        ? `📦 Entrega: ${periodo}${freela.entrega.hora ? ` até ${freela.entrega.hora}` : ''}`
+        : `📅 ${periodo}${freela.horario_inicio ? ` • ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}${festival ? ' (diário)' : ''}` : ''}`;
+
     // Compartilhamento nativo (WhatsApp etc.) com fallback para copiar
     const handleShare = async () => {
         const linhas = [
             `🎭 *${freela.descricao}*`,
-            `📅 ${periodo}${freela.horario_inicio ? ` • ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}${festival ? ' (diário)' : ''}` : ''}`,
+            quandoTexto,
         ];
         if (freela.local) linhas.push(`📍 ${freela.local}`);
         if (freela.contratante) linhas.push(`👤 ${freela.contratante}`);
@@ -72,7 +78,7 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
             `Olá, ${freela.sub.nome}! Seguem os dados do freela:`,
             '',
             `🎭 *${freela.descricao}*`,
-            `📅 ${periodo}${freela.horario_inicio ? ` • ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}${festival ? ' (diário)' : ''}` : ''}`,
+            quandoTexto,
         ];
         if (freela.local) linhas.push(`📍 ${freela.local}`);
         linhas.push(`🎛️ Função: ${categoria}`);
@@ -132,6 +138,32 @@ const FreelaDetailsModal: React.FC<FreelaDetailsModalProps> = ({ isOpen, onClose
                         {statusInfo.button}
                     </button>
                 </div>
+
+                {freela.entrega && (() => {
+                    const prazo = prazoEntrega(freela);
+                    const entregue = freela.entrega.entregue;
+                    return (
+                        <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <p className="text-xs font-bold uppercase text-orange-700">📦 Prazo de entrega</p>
+                                    <p className="text-lg font-bold text-gray-900">
+                                        {formatDate(freela.data_evento)}{freela.entrega.hora ? ` até ${freela.entrega.hora}` : ''}
+                                    </p>
+                                </div>
+                                <span className={`flex-shrink-0 whitespace-nowrap px-2 py-1 text-xs font-semibold rounded-full ${entregue ? 'bg-green-100 text-green-800' : CORES_URGENCIA[prazo.urgencia]}`}>
+                                    {entregue ? `Entregue${freela.entrega.data_entregue ? ` ${formatDate(freela.entrega.data_entregue).slice(0, 5)}` : ''}` : prazo.curto}
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => onUpdate(alternarEntregue(freela))}
+                                className={`w-full py-2 rounded-lg text-sm font-semibold transition-colors ${entregue ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-orange-500 text-white hover:bg-orange-600'}`}
+                            >
+                                {entregue ? 'Desfazer entrega' : '✅ Marcar como entregue'}
+                            </button>
+                        </div>
+                    );
+                })()}
 
                 {freela.sub && (
                     <div className="bg-teal-50 border-2 border-teal-200 rounded-lg p-4 space-y-3">

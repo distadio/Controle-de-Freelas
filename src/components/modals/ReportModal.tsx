@@ -680,7 +680,7 @@ const ReportFreelaCard: React.FC<{ freela: Freela }> = ({ freela }) => {
                 <p className="font-semibold text-gray-800 truncate text-sm" title={freela.descricao}>{freela.descricao}</p>
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
                     <span className={`px-2 py-0.5 font-semibold rounded-full capitalize ${info.badge}`}>{info.text}</span>
-                    <span className="text-gray-500">{periodoFreelaTexto(freela)}</span>
+                    <span className="text-gray-500">{freela.entrega ? `📦 entrega ${periodoFreelaTexto(freela)}${freela.entrega.entregue ? ' ✓' : ''}` : periodoFreelaTexto(freela)}</span>
                     {freela.contratante && <span className="text-gray-500 truncate max-w-[110px]">• {freela.contratante}</span>}
                 </div>
                 {freela.sub && (

@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom';
 import { Freela, Categoria, TipoServico, Bloqueio } from './types';
 import { addDays, freelaCobre, findBloqueio, formatShortBR } from './services/bloqueioService';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { entregasEmAlerta, prazoEntrega } from './services/entregaService';
 import { useAuth } from './contexts/AuthContext';
 import { uploadBackup, getCloudBackup, findOrCreateCalendar, syncFreelaToCalendar, deleteCalendarEvent } from './services/googleService';
 import SplashScreen from './components/SplashScreen';
@@ -47,6 +48,7 @@ const App: React.FC = () => {
     const [theme, setTheme] = useLocalStorage<'light' | 'dark'>('controle_freelas_theme', 'light');
     const [meiLimiteAnual, setMeiLimiteAnual] = useLocalStorage<number>('controle_freelas_mei_limite_anual', 81000);
     const [bannerDismissedOn, setBannerDismissedOn] = useLocalStorage<string>('controle_freelas_banner_dismissed', '');
+    const [entregasDismissedOn, setEntregasDismissedOn] = useLocalStorage<string>('controle_freelas_entregas_dismissed', '');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [activeModal, setActiveModal] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -70,12 +72,16 @@ const App: React.FC = () => {
     const todayInfo = useMemo(() => {
         const today = todayString();
         const todayFreelas = freelas
-            .filter(f => freelaCobre(f, today))
+            .filter(f => freelaCobre(f, today) && !f.entrega)
             .sort((a, b) => (a.horario_inicio || '').localeCompare(b.horario_inicio || ''));
         const overdue = freelas.filter(f => f.status === 'atrasada');
         const overdueTotal = overdue.reduce((s, f) => s + f.valor, 0);
         return { today, todayFreelas, overdueCount: overdue.length, overdueTotal };
     }, [freelas]);
+
+    // Prazos de entrega vencidos ou para os próximos dias (some ao marcar como entregue)
+    const entregasAlerta = useMemo(() => entregasEmAlerta(freelas), [freelas]);
+    const showEntregasAlerta = entregasAlerta.length > 0 && entregasDismissedOn !== todayInfo.today;
 
     const showTodayBanner = bannerDismissedOn !== todayInfo.today
         && (todayInfo.todayFreelas.length > 0 || todayInfo.overdueCount > 0);
@@ -267,6 +273,7 @@ const App: React.FC = () => {
             google_calendar_event_id: null,
             conflictWith: undefined,
             sub: freela.sub ? { ...freela.sub, pago: false, data_pagamento: null } : null,
+            entrega: freela.entrega ? { ...freela.entrega, entregue: false, data_entregue: null } : null,
         });
         setSelectedDate(null);
         setActiveModal('freelaForm');
@@ -619,6 +626,36 @@ const App: React.FC = () => {
                             >
                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                             </button>
+                        </div>
+                    )}
+                    {showEntregasAlerta && (
+                        <div className={`mx-4 mt-3 text-white rounded-xl shadow-lg p-3 bg-gradient-to-r ${entregasAlerta.some(f => prazoEntrega(f).urgencia === 'atrasada') ? 'from-red-500 to-rose-600' : 'from-orange-500 to-amber-500'}`}>
+                            <div className="flex items-center justify-between mb-1">
+                                <p className="text-sm font-bold">📦 Prazos de entrega</p>
+                                <button
+                                    onClick={() => setEntregasDismissedOn(todayInfo.today)}
+                                    className="text-[11px] font-semibold opacity-90 hover:opacity-100 underline"
+                                >
+                                    ocultar hoje
+                                </button>
+                            </div>
+                            <ul className="space-y-1">
+                                {entregasAlerta.slice(0, 4).map(f => {
+                                    const prazo = prazoEntrega(f);
+                                    return (
+                                        <li key={f.id}>
+                                            <button
+                                                onClick={() => { setSelectedFreela(f); setActiveModal('freelaDetails'); }}
+                                                className="w-full flex items-center justify-between gap-2 text-left text-sm bg-white/15 hover:bg-white/25 rounded-lg px-2 py-1.5"
+                                            >
+                                                <span className="truncate font-semibold">{f.descricao}</span>
+                                                <span className={`flex-shrink-0 text-xs font-bold ${prazo.urgencia === 'atrasada' ? 'bg-black/25 px-1.5 py-0.5 rounded' : ''}`}>{prazo.texto}</span>
+                                            </button>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                            {entregasAlerta.length > 4 && <p className="text-xs opacity-90 mt-1">+{entregasAlerta.length - 4} outras entregas</p>}
                         </div>
                     )}
                     <div className="p-4 bg-white">

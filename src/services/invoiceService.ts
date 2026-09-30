@@ -128,9 +128,11 @@ export const gerarInvoicePdf = async (d: InvoiceData): Promise<Blob> => {
     const body = itens.map((f, i) => {
         const multi = isMultiDay(f);
         const data = multi ? `${dataBR(f.data_evento)} a ${dataBR(f.data_fim!)}` : dataBR(f.data_evento);
-        const horario = f.horario_inicio
-            ? `${f.horario_inicio}${f.horario_fim ? ` - ${f.horario_fim}` : ''}${multi ? ' (diário)' : ''}`
-            : '-';
+        const horario = f.entrega
+            ? `Entrega${f.entrega.hora ? ` até ${f.entrega.hora}` : ''}`
+            : f.horario_inicio
+                ? `${f.horario_inicio}${f.horario_fim ? ` - ${f.horario_fim}` : ''}${multi ? ' (diário)' : ''}`
+                : '-';
         return [
             String(i + 1),
             data,

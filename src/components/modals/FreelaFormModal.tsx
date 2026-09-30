@@ -116,6 +116,13 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
 
     const inicio = formData.data_evento || '';
 
+    const modoEntrega = !!formData.entrega && !festivalMode;
+    const escolherModoAgenda = (entrega: boolean) => setFormData(prev => (
+        entrega
+            ? { ...prev, entrega: prev.entrega || { hora: null, entregue: false }, horario_inicio: null, horario_fim: null }
+            : { ...prev, entrega: null }
+    ));
+
     const escolherJustificativa = (j: Justificativa) => {
         setJustificativa(j);
         if (j === 'festival') {
@@ -202,6 +209,17 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
             declara_mei: formData.declara_mei || false,
             data_fim: null,
             sub: formData.sub ? normalizarSub({ ...formData.sub, nome: nomeSubCanonico(formData.sub.nome) }, formData.valor || 0) : null,
+            ...(formData.entrega && !festivalMode
+                ? {
+                    horario_inicio: null,
+                    horario_fim: null,
+                    entrega: {
+                        hora: formData.entrega.hora || null,
+                        entregue: !!formData.entrega.entregue,
+                        data_entregue: formData.entrega.entregue ? (formData.entrega.data_entregue || null) : null,
+                    },
+                }
+                : { entrega: null }),
             ...extra,
         };
     };
@@ -283,8 +301,8 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
         const puladas = ocorrencias.filter(d => findBloqueio(bloqueios, d));
         const datas = [inicio, ...ocorrencias.filter(d => !findBloqueio(bloqueios, d))];
 
-        // Com sub, eu não estou no evento: sem alerta de festival nem conflito de horário
-        const comSub = !!formData.sub;
+        // Com sub (ou prazo de entrega), não estou presente no evento: sem alerta de festival nem conflito de horário
+        const comSub = !!formData.sub || !!formData.entrega;
 
         // Freela adicional dentro de um festival: alerta antes de cadastrar
         if (!mesmaData && !comSub) {
@@ -334,6 +352,7 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
                     data_evento: d,
                     data_vencimento: base.data_vencimento ? addDays(base.data_vencimento, deslocamento) : null,
                     sub: base.sub && i > 0 ? { ...base.sub, pago: false, data_pagamento: null } : base.sub,
+                    entrega: base.entrega && i > 0 ? { ...base.entrega, entregue: false, data_entregue: null } : base.entrega,
                 };
             });
             onSaveMany(lote, puladas);
@@ -519,11 +538,44 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
                                 {diasPeriodo > 1 && <p className="text-xs text-gray-600 mt-1">{diasPeriodo} dias de festival</p>}
                             </div>
                         ) : (
-                            <div>
-                                <label htmlFor="dataEvento" className={labelClass}>Data do Evento *</label>
-                                <input type="date" id="dataEvento" name="data_evento" value={inicio} onChange={handleChange} required className={inputClass} />
-                            </div>
+                            <>
+                                <div className="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => escolherModoAgenda(false)}
+                                        className={`py-2 rounded-lg text-sm font-bold transition-colors ${!modoEntrega ? 'bg-blue-600 text-white shadow' : 'text-gray-600'}`}
+                                    >
+                                        🕒 Com horário
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => escolherModoAgenda(true)}
+                                        className={`py-2 rounded-lg text-sm font-bold transition-colors ${modoEntrega ? 'bg-orange-500 text-white shadow' : 'text-gray-600'}`}
+                                    >
+                                        📦 Prazo de entrega
+                                    </button>
+                                </div>
+                                <div>
+                                    <label htmlFor="dataEvento" className={labelClass}>{modoEntrega ? 'Data de entrega (deadline) *' : 'Data do Evento *'}</label>
+                                    <input type="date" id="dataEvento" name="data_evento" value={inicio} onChange={handleChange} required className={inputClass} />
+                                </div>
+                            </>
                         )}
+                        {modoEntrega ? (
+                            <div>
+                                <label htmlFor="entregaHora" className={labelClass}>Entregar até (hora, opcional)</label>
+                                <input
+                                    type="time"
+                                    id="entregaHora"
+                                    value={formData.entrega?.hora || ''}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, entrega: { ...(prev.entrega || { entregue: false }), hora: e.target.value || null } }))}
+                                    className={inputClass}
+                                />
+                                <p className="text-xs text-gray-600 mt-1">
+                                    🔔 O app avisa a partir de 3 dias antes. Sincronizando com o Google Agenda, o celular também lembra.
+                                </p>
+                            </div>
+                        ) : (
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label htmlFor="horarioInicio" className={labelClass}>Horário Início{ast}</label>
@@ -534,13 +586,14 @@ const FreelaFormModal: React.FC<FreelaFormModalProps> = ({
                                 <input type="time" id="horarioFim" name="horario_fim" value={formData.horario_fim || ''} onChange={handleChange} required={req} className={inputClass} />
                             </div>
                         </div>
-                        {cargaHoraria && (
+                        )}
+                        {cargaHoraria && !modoEntrega && (
                             <div className="text-center text-sm font-medium text-gray-700 bg-gray-100 p-2 rounded-lg -mt-2 border border-gray-200">
                                 {cargaHoraria}
                             </div>
                         )}
                         <div>
-                            <label htmlFor="dataVencimento" className={labelClass}>Data de Vencimento{ast}</label>
+                            <label htmlFor="dataVencimento" className={labelClass}>Vencimento do pagamento{ast}</label>
                             <input type="date" id="dataVencimento" name="data_vencimento" value={formData.data_vencimento || ''} onChange={handleChange} required={req} className={inputClass} />
                         </div>
                         <div>

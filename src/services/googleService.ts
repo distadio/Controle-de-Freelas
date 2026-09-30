@@ -278,9 +278,29 @@ export const syncFreelaToCalendar = async (calendarId: string, freela: Freela): 
     try {
         const multiDay = isMultiDay(freela);
         const isAllDay = !freela.horario_inicio;
+        const entrega = freela.entrega;
         let start, end;
+        // Lembretes padrão: 1 dia e 2 horas antes
+        let lembretes = [24 * 60, 120];
 
-        if (multiDay) {
+        if (entrega) {
+            // Prazo de entrega: evento de 30 min terminando no horário limite,
+            // ou de dia inteiro quando não há hora (lembretes às 9h, 3 dias e 1 dia antes)
+            if (entrega.hora) {
+                const limite = new Date(`${freela.data_evento}T${entrega.hora}:00`);
+                const inicio = new Date(limite.getTime() - 30 * 60000);
+                const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
+                start = { 'dateTime': fmt(inicio), 'timeZone': 'America/Sao_Paulo' };
+                end = { 'dateTime': fmt(limite), 'timeZone': 'America/Sao_Paulo' };
+                lembretes = [3 * 24 * 60, 24 * 60, 180];
+            } else {
+                start = { 'date': freela.data_evento };
+                end = { 'date': addDays(freela.data_evento, 1) };
+                lembretes = [3 * 24 * 60 - 9 * 60, 24 * 60 - 9 * 60];
+            }
+            // Já entregue: sem lembretes
+            if (entrega.entregue) lembretes = [];
+        } else if (multiDay) {
             // Festival/cachê único: evento de dia inteiro cobrindo todo o período
             start = { 'date': freela.data_evento };
             end = { 'date': addDays(freela.data_fim!, 1) };
@@ -309,17 +329,14 @@ export const syncFreelaToCalendar = async (calendarId: string, freela: Freela): 
         }
         
         const eventResource = {
-            'summary': freela.sub ? `🔁 SUB ${freela.sub.nome} — ${freela.descricao}` : freela.descricao,
+            'summary': `${freela.sub ? `🔁 SUB ${freela.sub.nome} — ` : ''}${entrega ? (entrega.entregue ? '✅ ENTREGUE: ' : '📦 ENTREGA: ') : ''}${freela.descricao}`,
             'location': freela.local || '',
-            'description': `${multiDay ? `Festival / cachê único${freela.horario_inicio ? `\nHorário diário: ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}` : ''}\n` : ''}Contratante: ${freela.contratante || 'N/A'}\nTipo: ${freela.tipo_servico.replace(/_/g, ' ')}\nFunção: ${freela.categoria.replace(/_/g, ' ')}${freela.sub ? `\nSub no meu lugar: ${freela.sub.nome}${freela.sub.contato ? ` (${freela.sub.contato})` : ''}` : ''}\n\nObservações: ${freela.observacoes || ''}\n\nGerado por Controle de Freelas`,
+            'description': `${entrega ? `Prazo de entrega: ${freela.data_evento.split('-').reverse().join('/')}${entrega.hora ? ` até ${entrega.hora}` : ''}${entrega.entregue ? ' (entregue)' : ''}\n` : ''}${multiDay ? `Festival / cachê único${freela.horario_inicio ? `\nHorário diário: ${freela.horario_inicio}${freela.horario_fim ? ` às ${freela.horario_fim}` : ''}` : ''}\n` : ''}Contratante: ${freela.contratante || 'N/A'}\nTipo: ${freela.tipo_servico.replace(/_/g, ' ')}\nFunção: ${freela.categoria.replace(/_/g, ' ')}${freela.sub ? `\nSub no meu lugar: ${freela.sub.nome}${freela.sub.contato ? ` (${freela.sub.contato})` : ''}` : ''}\n\nObservações: ${freela.observacoes || ''}\n\nGerado por Controle de Freelas`,
             'start': start,
             'end': end,
             'reminders': {
                 'useDefault': false,
-                'overrides': [
-                    { 'method': 'popup', 'minutes': 24 * 60 },
-                    { 'method': 'popup', 'minutes': 120 },
-                ],
+                'overrides': lembretes.map(minutes => ({ 'method': 'popup', minutes })),
             },
         };
 

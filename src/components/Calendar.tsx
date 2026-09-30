@@ -120,8 +120,8 @@ const Calendar: React.FC<CalendarProps> = ({ currentDate, freelas, bloqueios, on
                 ) : dailyFreelas.length > 0 && (
                     <div className="absolute bottom-1 left-0 right-0 flex flex-wrap gap-px justify-center items-center max-h-4 overflow-hidden">
                         {dailyFreelas.slice(0, 4).map(f => (
-                             <span key={f.id} className="text-[8px] leading-none opacity-90" title={f.sub ? `${f.descricao} — sub: ${f.sub.nome}` : f.descricao}>
-                                {f.sub ? '🔁' : (CategoriaIcons[f.categoria] || CategoriaIcons['outro'])}
+                             <span key={f.id} className="text-[8px] leading-none opacity-90" title={f.sub ? `${f.descricao} — sub: ${f.sub.nome}` : f.entrega ? `Entrega: ${f.descricao}` : f.descricao}>
+                                {f.sub ? '🔁' : f.entrega ? (f.entrega.entregue ? '✅' : '📦') : (CategoriaIcons[f.categoria] || CategoriaIcons['outro'])}
                             </span>
                         ))}
                     </div>
