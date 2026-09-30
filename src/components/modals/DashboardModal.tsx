@@ -275,27 +275,6 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                     />
                 </div>
 
-                {/* Insights locais */}
-                <Secao
-                    titulo="💡 Insights para o seu negócio"
-                    subtitulo={`Gerados no próprio app a partir dos seus freelas de ${ano}${contratante ? ' (todos os contratantes)' : ''}, sem enviar seus dados para fora.`}
-                >
-                    <div className="space-y-2.5">
-                        {(verTodosInsights ? insightsLocais : insightsLocais.slice(0, 4)).map(i => (
-                            <CartaoInsight key={i.id} insight={i} onCobrar={setCobrarDe} />
-                        ))}
-                    </div>
-                    {insightsLocais.length > 4 && (
-                        <button
-                            onClick={() => setVerTodosInsights(v => !v)}
-                            className="w-full mt-3 py-2 text-sm font-semibold text-indigo-600 bg-gray-50 hover:bg-gray-100 rounded-lg"
-                        >
-                            {verTodosInsights ? 'Mostrar menos' : `Ver todos os ${insightsLocais.length} insights`}
-                        </button>
-                    )}
-                    <p className="text-[10px] text-gray-400 mt-2 text-center">Sugestões automáticas. Não substituem a orientação de um contador.</p>
-                </Secao>
-
                 {/* Quem te deve */}
                 <Secao titulo="💰 Quem te deve" subtitulo={`Trabalhos já feitos e ainda não pagos${temDevedorOutroAno ? ' (inclui anos anteriores)' : ''}`}>
                     {d.devedores.length === 0 ? (
@@ -535,6 +514,27 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, allFre
                             ? 'Nenhum freela marcado como MEI neste ano.'
                             : `${meiPct}% do limite de ${brl(meiLimiteAnual)} • restam ${brl(Math.max(0, meiLimiteAnual - resumo.mei))}`}
                     </p>
+                </Secao>
+
+                {/* Insights locais */}
+                <Secao
+                    titulo="💡 Insights para o seu negócio"
+                    subtitulo={`Gerados no próprio app a partir dos seus freelas de ${ano}${contratante ? ' (todos os contratantes)' : ''}, sem enviar seus dados para fora.`}
+                >
+                    <div className="space-y-2.5">
+                        {(verTodosInsights ? insightsLocais : insightsLocais.slice(0, 4)).map(i => (
+                            <CartaoInsight key={i.id} insight={i} onCobrar={setCobrarDe} />
+                        ))}
+                    </div>
+                    {insightsLocais.length > 4 && (
+                        <button
+                            onClick={() => setVerTodosInsights(v => !v)}
+                            className="w-full mt-3 py-2 text-sm font-semibold text-indigo-600 bg-gray-50 hover:bg-gray-100 rounded-lg"
+                        >
+                            {verTodosInsights ? 'Mostrar menos' : `Ver todos os ${insightsLocais.length} insights`}
+                        </button>
+                    )}
+                    <p className="text-[10px] text-gray-400 mt-2 text-center">Sugestões automáticas. Não substituem a orientação de um contador.</p>
                 </Secao>
 
                 {/* IA externa (Gemini) */}
