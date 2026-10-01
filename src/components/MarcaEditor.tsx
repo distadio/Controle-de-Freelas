@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Marca, CORES_PADRAO, processarLogo, textoSobre, fundoDoLogo, rgbParaHex } from '../services/marcaService';
+import React, { useEffect, useRef, useState } from 'react';
+import { Marca, CORES_PADRAO, processarLogo, reprocessarLogo, alternarFundo, textoSobre, fundoDoLogo, rgbParaHex } from '../services/marcaService';
 
 interface MarcaEditorProps {
     marca: Marca;
@@ -13,6 +13,28 @@ const MarcaEditor: React.FC<MarcaEditorProps> = ({ marca, onChange, numero }) =>
     const inputRef = useRef<HTMLInputElement>(null);
     const [processando, setProcessando] = useState(false);
     const [erro, setErro] = useState<string | null>(null);
+
+    // Logo salvo antes da remoção automática de fundo: trata uma vez, ao abrir
+    const marcaRef = useRef(marca);
+    marcaRef.current = marca;
+    useEffect(() => {
+        if (!marca.logo || marca.semFundo !== undefined) return;
+        let ativo = true;
+        reprocessarLogo(marca.logo)
+            .then(novo => { if (ativo) onChange({ ...marcaRef.current, ...novo }); })
+            .catch(() => { if (ativo) onChange({ ...marcaRef.current, semFundo: false }); });
+        return () => { ativo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [marca.logo, marca.semFundo]);
+
+    const trocarFundo = async () => {
+        setProcessando(true);
+        try {
+            onChange(await alternarFundo(marca));
+        } finally {
+            setProcessando(false);
+        }
+    };
 
     const enviarLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const arquivo = e.target.files?.[0];
@@ -31,7 +53,7 @@ const MarcaEditor: React.FC<MarcaEditorProps> = ({ marca, onChange, numero }) =>
         }
     };
 
-    const removerLogo = () => onChange({ cor: marca.cor, logo: null });
+    const removerLogo = () => onChange({ cor: marca.cor, logo: null, logoAlternativo: null });
 
     const texto = rgbParaHex(textoSobre(marca.cor));
     const fundo = fundoDoLogo(marca);
@@ -107,7 +129,17 @@ const MarcaEditor: React.FC<MarcaEditorProps> = ({ marca, onChange, numero }) =>
                         onChange={enviarLogo}
                     />
                 </div>
-                <p className="text-[11px] text-gray-500 mt-1.5">PNG com fundo transparente fica melhor. JPG e JPEG também funcionam. O logo fica centralizado no cabeçalho.</p>
+                {marca.logo && marca.logoAlternativo && (
+                    <div className="mt-2 flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                        <p className="text-[11px] text-gray-600">
+                            {marca.semFundo ? '✂️ O fundo da imagem foi removido: fica só o logo.' : 'Usando a imagem original, com fundo.'}
+                        </p>
+                        <button type="button" onClick={trocarFundo} disabled={processando} className="flex-shrink-0 text-xs font-semibold text-purple-700 underline disabled:opacity-60">
+                            {marca.semFundo ? 'Usar original' : 'Remover fundo'}
+                        </button>
+                    </div>
+                )}
+                <p className="text-[11px] text-gray-500 mt-1.5">PNG ou JPG/JPEG. Se a imagem tiver fundo (cor lisa ou degradê), o app remove e deixa só o logo, centralizado no cabeçalho.</p>
                 {erro && <p className="text-xs text-red-600 font-semibold mt-1.5" role="alert">🚫 {erro}</p>}
             </div>
 
